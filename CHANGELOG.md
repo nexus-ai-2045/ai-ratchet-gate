@@ -17,3 +17,9 @@
 - gitによる列挙に失敗した場合はfail-closedで停止
 - baseline変更とskip利用を人間レビューの対象として明示
 - PRIVATE運用を維持し、公開・release・配布は別承認とした
+
+### 公開準備
+
+- 公開時のライセンスとしてMIT Licenseを採用
+- GitHub ReleaseとPyPIの両方を配布先として採用
+- visibility変更、tag、release作成、パッケージ送信は個別承認のまま維持
