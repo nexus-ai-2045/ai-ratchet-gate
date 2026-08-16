@@ -67,9 +67,14 @@ def write_wheel(
     extra_entry_point: str | None = None,
     extra_file: str | None = None,
     incomplete_record: bool = False,
+    module_overrides: dict[str, bytes] | None = None,
 ) -> None:
+    module_overrides = module_overrides or {}
     members: dict[str, bytes | str] = {
-        f"{module_prefix}{name}": "" for name in CHECK.REQUIRED_WHEEL_SUFFIXES
+        f"{module_prefix}{name}": module_overrides.get(
+            name, (ROOT / "src" / name).read_bytes()
+        )
+        for name in CHECK.REQUIRED_WHEEL_SUFFIXES
     }
     metadata_file = f"{dist_info}METADATA"
     members[metadata_file] = metadata_bytes(
@@ -286,6 +291,18 @@ def test_release_artifacts_reject_unexpected_wheel_files(tmp_path: Path) -> None
     wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel, extra_file="sitecustomize.py")
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_match_reviewed_source(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(
+        wheel,
+        module_overrides={"ai_ratchet_gate/cli.py": b"def main(): return 0\n"},
+    )
     write_sdist(sdist)
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1

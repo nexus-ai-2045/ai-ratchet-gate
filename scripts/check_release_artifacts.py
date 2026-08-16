@@ -187,6 +187,12 @@ def validate_wheel(
         unexpected = sorted(names - allowed_names)
         if unexpected:
             raise ValueError(f"wheelに未許可ファイルがあります: {', '.join(unexpected)}")
+        for module_name in REQUIRED_WHEEL_SUFFIXES:
+            source = ROOT / "src" / module_name
+            if archive.read(module_name) != source.read_bytes():
+                raise ValueError(
+                    f"wheelの実行コードがレビュー済みsourceと不一致です: {module_name}"
+                )
 
         validate_metadata(
             archive.read(metadata_files[0]),
