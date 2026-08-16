@@ -5,7 +5,7 @@
 ## 対象
 
 - リポジトリ: `nexus-ai-2045/ai-ratchet-gate`
-- 公開範囲: `PRIVATE`
+- 公開範囲: `PUBLIC`
 - 用途: trackedかつignoredになったGit上の矛盾が増えることを止める
 
 ## 機械検査
@@ -22,5 +22,5 @@
 
 - baselineの拡大、skipの利用、hook配線変更は人間がdiffを確認する。
 - push、Pull Request、merge、release、visibility変更は別々に承認する。
-- このリポジトリをpublicにする場合は、README、LICENSE、SECURITY.md、secret scan、
+- 今後のreleaseやvisibility変更では、README、LICENSE、SECURITY.md、secret scan、
   personal path scan、commit historyを再確認し、リポジトリ固有の明示承認を得る。
