@@ -23,7 +23,7 @@ __all__ = [
 ]
 globals().update({name: getattr(_CLI, name) for name in __all__})
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 if __name__ == "__main__":
