@@ -30,6 +30,7 @@ def metadata_bytes(
         'packaging<27,>=24; extra == "release"',
         'wheel<1,>=0.45; extra == "release"',
     ),
+    provides_extras: tuple[str, ...] = ("test", "release"),
 ) -> bytes:
     metadata = email.message.Message()
     metadata["Name"] = "ai-ratchet-gate"
@@ -41,6 +42,8 @@ def metadata_bytes(
         metadata["Requires-Dist"] = requirement
     for dependency in dependencies:
         metadata["Requires-Dist"] = dependency
+    for extra in provides_extras:
+        metadata["Provides-Extra"] = extra
     if private_classifier:
         metadata["Classifier"] = CHECK.PRIVATE_CLASSIFIER
     return metadata.as_bytes()
@@ -64,6 +67,7 @@ def write_wheel(
         'packaging<27,>=24; extra == "release"',
         'wheel<1,>=0.45; extra == "release"',
     ),
+    provides_extras: tuple[str, ...] = ("test", "release"),
     extra_entry_point: str | None = None,
     extra_file: str | None = None,
     incomplete_record: bool = False,
@@ -82,6 +86,7 @@ def write_wheel(
         requires_python=requires_python,
         dependencies=dependencies,
         optional_requires_dist=optional_requires_dist,
+        provides_extras=provides_extras,
     )
     wheel_file = f"{dist_info}WHEEL"
     record_file = f"{dist_info}RECORD"
@@ -122,12 +127,15 @@ def write_sdist(
     extra_file: str | None = None,
     license_data: bytes | None = None,
     source_overrides: dict[str, bytes] | None = None,
+    provides_extras: tuple[str, ...] = ("test", "release"),
 ) -> None:
     source_overrides = source_overrides or {}
     with tarfile.open(path, "w:gz") as archive:
         files = {
             **{suffix: b"test" for suffix in CHECK.ALLOWED_SDIST_SUFFIXES},
-            "PKG-INFO": metadata_bytes(version=version),
+            "PKG-INFO": metadata_bytes(
+                version=version, provides_extras=provides_extras
+            ),
         }
         for wheel_name in CHECK.REQUIRED_WHEEL_SUFFIXES:
             source_name = f"src/{wheel_name}"
@@ -371,8 +379,50 @@ def test_release_artifacts_reject_changed_dependency_markers(tmp_path: Path) -> 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
 
 
+def test_release_artifacts_reject_changed_dependency_extras(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(
+        wheel,
+        optional_requires_dist=(
+            'pytest<9,>=8; extra == "test"',
+            'build[virtualenv]<2,>=1.2; extra == "release"',
+            'packaging<27,>=24; extra == "release"',
+            'wheel<1,>=0.45; extra == "release"',
+        ),
+    )
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_dependency_signature_preserves_urls() -> None:
+    first = CHECK.dependency_signature("demo @ https://example.invalid/first.whl")
+    second = CHECK.dependency_signature("demo @ https://example.invalid/second.whl")
+
+    assert first != second
+
+
+def test_release_artifacts_require_wheel_provides_extra(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, provides_extras=())
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_require_sdist_provides_extra(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist, provides_extras=())
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
 def test_dependency_signature_combines_optional_markers() -> None:
-    _, _, marker = CHECK.dependency_signature(
+    _, _, _, _, marker = CHECK.dependency_signature(
         'demo>=1; python_version < "3.12"', "test"
     )
 

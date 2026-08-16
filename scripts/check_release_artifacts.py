@@ -64,7 +64,9 @@ ALLOWED_SDIST_SUFFIXES = (
 )
 
 
-def dependency_signature(requirement: str, extra: str = "") -> tuple[str, tuple[str, ...], str]:
+def dependency_signature(
+    requirement: str, extra: str = ""
+) -> tuple[str, tuple[str, ...], tuple[str, ...], str, str]:
     parsed = Requirement(requirement)
     marker = parsed.marker
     if extra:
@@ -73,17 +75,28 @@ def dependency_signature(requirement: str, extra: str = "") -> tuple[str, tuple[
     return (
         canonicalize_name(parsed.name),
         tuple(sorted(str(item) for item in parsed.specifier)),
+        tuple(sorted(canonicalize_name(item) for item in parsed.extras)),
+        parsed.url or "",
         str(marker) if marker is not None else "",
     )
 
 
-def project_metadata() -> tuple[str, str, str, str, str, tuple[tuple[str, tuple[str, ...], str], ...]]:
+def project_metadata() -> tuple[
+    str,
+    str,
+    str,
+    str,
+    str,
+    tuple[tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...],
+    tuple[str, ...],
+]:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
         "project"
     ]
     command, target = next(iter(project["scripts"].items()))
     dependencies = [dependency_signature(item) for item in project.get("dependencies", [])]
-    for extra, requirements in project.get("optional-dependencies", {}).items():
+    optional_dependencies = project.get("optional-dependencies", {})
+    for extra, requirements in optional_dependencies.items():
         dependencies.extend(dependency_signature(item, extra) for item in requirements)
     return (
         project["name"],
@@ -92,6 +105,7 @@ def project_metadata() -> tuple[str, str, str, str, str, tuple[tuple[str, tuple[
         command,
         target,
         tuple(sorted(dependencies)),
+        tuple(sorted(canonicalize_name(item) for item in optional_dependencies)),
     )
 
 
@@ -120,7 +134,10 @@ def validate_metadata(
     expected_name: str,
     expected_version: str,
     expected_requires_python: str,
-    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
+    expected_dependencies: tuple[
+        tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...
+    ],
+    expected_extras: tuple[str, ...],
 ) -> None:
     metadata = email.message_from_bytes(raw_metadata)
     if metadata["Name"] != expected_name:
@@ -140,6 +157,11 @@ def validate_metadata(
     )
     if actual_dependencies != expected_dependencies:
         raise ValueError("Requires-Distがpyproject.tomlと一致しません")
+    actual_extras = tuple(
+        sorted(canonicalize_name(item) for item in metadata.get_all("Provides-Extra", []))
+    )
+    if actual_extras != expected_extras:
+        raise ValueError("Provides-Extraがpyproject.tomlと一致しません")
     if PRIVATE_CLASSIFIER not in metadata.get_all("Classifier", []):
         raise ValueError("PyPIへの誤送信を拒否するclassifierがありません")
 
@@ -151,7 +173,10 @@ def validate_wheel(
     expected_requires_python: str,
     expected_command: str,
     expected_target: str,
-    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
+    expected_dependencies: tuple[
+        tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...
+    ],
+    expected_extras: tuple[str, ...],
 ) -> None:
     expected_filename = (
         f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}-py3-none-any.whl"
@@ -200,6 +225,7 @@ def validate_wheel(
             expected_version,
             expected_requires_python,
             expected_dependencies,
+            expected_extras,
         )
         if archive.read(license_file) != (ROOT / "LICENSE").read_bytes():
             raise ValueError("wheelのLICENSE本文がrepo正本と一致しません")
@@ -241,7 +267,10 @@ def validate_sdist(
     expected_name: str,
     expected_version: str,
     expected_requires_python: str,
-    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
+    expected_dependencies: tuple[
+        tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...
+    ],
+    expected_extras: tuple[str, ...],
 ) -> None:
     with tarfile.open(path, "r:gz") as archive:
         members = archive.getmembers()
@@ -270,6 +299,7 @@ def validate_sdist(
             expected_version,
             expected_requires_python,
             expected_dependencies,
+            expected_extras,
         )
         root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
         license_member = files.get(f"{root}/LICENSE")
@@ -321,13 +351,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        name, version, requires_python, command, target, dependencies = project_metadata()
+        (
+            name,
+            version,
+            requires_python,
+            command,
+            target,
+            dependencies,
+            extras,
+        ) = project_metadata()
         wheel = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}-*.whl")
         sdist = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}.tar.gz")
         validate_wheel(
-            wheel, name, version, requires_python, command, target, dependencies
+            wheel, name, version, requires_python, command, target, dependencies, extras
         )
-        validate_sdist(sdist, name, version, requires_python, dependencies)
+        validate_sdist(sdist, name, version, requires_python, dependencies, extras)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"ERROR [release-artifacts]: {error}")
         return 1
