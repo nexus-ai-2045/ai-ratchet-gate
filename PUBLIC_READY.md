@@ -4,18 +4,18 @@
 
 ## 現在の判定
 
-**公開未承認・リリース未実施**です。この文書は公開許可ではありません。
+**公開済み・v0.1.0リリース済み**です。この文書は、公開時点の検査と実施結果を記録します。
 
 - 対象リポジトリ: `nexus-ai-2045/ai-ratchet-gate`
-- 検査起点HEAD: `e9dd81a45086a0244b2f200bfe61ffcd22107717`
-- 現在の公開範囲: `PRIVATE`
+- 公開対象HEAD: `b53fc2795bbee1b8e680c6d096541e1bc6830e07`
+- 現在の公開範囲: `PUBLIC`
 - 想定公開名義: `nexus-ai-2045`
 - 想定初回バージョン: `0.1.0`
 - 採用ライセンス: MIT
 - 採用配布先: GitHub Releaseのみ（PyPIへは送信しない）
 
-この準備文書を含むcommitは、上記HEADの検査結果へ文書を追加する後続commitとして扱います。
-public化またはreleaseの直前に、最終HEADを対象として全項目を再検査します。
+2026-08-17に最終HEADを再検査し、リポジトリをpublic化した後、同じHEADへ`v0.1.0`を付与して
+GitHub Releaseを公開しました。PyPIへの送信は行っていません。
 
 ## 確認済み
 
@@ -27,29 +27,30 @@ public化またはreleaseの直前に、最終HEADを対象として全項目を
 - wheelとsource distributionの隔離ビルド、インストール、CLI smoke testが成功した
 - wheelとsource distributionのmetadata、同梱ファイル、インストール結果を確認した
 - remote owner、操作アカウント、実効commit名義は`nexus-ai-2045`で一致した
-- リポジトリはPRIVATEであり、公開操作は行っていない
+- 公開後にvisibility、tag、Release、添付物のSHA-256を読み戻した
+- GitHub Secret ScanningとPush Protectionを有効化した
 
 ## 方針決定済み
 
 - MIT Licenseで公開する
 - 配布はGitHub Releaseだけを使い、PyPIへは送信しない
 
-## 公開前に人間判断が必要
+## 公開時に完了した人間判断
 
-- `ai-ratchet-gate`という配布名の利用可否と所有権を公開先で確認する
-- 公開される全ファイルとcommit履歴を最終目視する
-- public化、tag、GitHub Release作成をそれぞれ明示承認する
+- `nexus-ai-2045/ai-ratchet-gate`をMIT Licenseでpublic化する
+- 配布名を`ai-ratchet-gate`、初回versionを`v0.1.0`とする
+- GitHub Releaseだけで配布し、PyPIへは送信しない
+- public化、tag push、GitHub Release公開をそれぞれ人間レビューする
 
-## 公開直前の機械検査
+## 公開時に完了した機械検査
 
-- 最終HEADでテスト、ビルド、インストール、CLI smoke testを成功させる
-- 最終HEADのtreeと全commit履歴をsecret・個人pathについて再検査する
-- README、LICENSE、SECURITY.md、PREFLIGHT.mdとパッケージmetadataの整合性を確認する
-- dependency advisoryとGitHub Actionsの権限を確認する
-- GitHub上のCI、review、visibility、default branch、release/tagの状態を読み戻す
+- 最終HEADでテスト、ビルド、インストール、CLI smoke testが成功した
+- 最終HEADのtreeと全commit履歴をsecret・個人pathについて再検査した
+- README、LICENSE、SECURITY.md、PREFLIGHT.mdとパッケージmetadataの整合性を確認した
+- dependency advisoryとGitHub Actionsの権限を確認した
+- GitHub上のCI、review、visibility、default branch、Release、tagの状態を読み戻した
 
-## 公開操作の停止線
+## 今後の公開操作の停止線
 
-public化すると、READMEやソースだけでなく、GitHub上のファイルとcommit履歴がWeb全体から
-閲覧可能になります。公開対象、正確な操作、最終検査結果を提示し、このリポジトリ固有の
-明示承認を得るまでvisibilityを変更しません。
+今後のRelease、tag、告知、配布先追加、visibility変更は、公開対象、正確な操作、検査結果を
+提示し、このリポジトリ固有の明示承認を得てから実行します。
