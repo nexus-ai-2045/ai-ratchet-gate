@@ -20,7 +20,4 @@ def test_publication_metadata_matches_the_approved_identity() -> None:
     assert project["urls"]["Source"] == (
         "https://github.com/nexus-ai-2045/ai-ratchet-gate"
     )
-    assert project["optional-dependencies"]["release"] == [
-        "build>=1.2,<2",
-        "twine>=6,<8",
-    ]
+    assert project["optional-dependencies"]["release"] == ["build>=1.2,<2"]

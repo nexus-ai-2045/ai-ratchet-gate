@@ -120,4 +120,4 @@ Repo Preflightの成功は、push、merge、公開の承認ではありません
 ## Repository visibility
 
 このrepositoryは現在PRIVATEです。ソフトウェアにはMIT Licenseを採用していますが、
-public化、GitHub Release、パッケージ送信はそれぞれ別の承認境界です。
+public化、tag、GitHub Release作成はそれぞれ別の承認境界です。PyPIへは送信しません。

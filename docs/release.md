@@ -5,15 +5,15 @@
 - 対象リポジトリ、公開名義、最終HEAD、CI、reviewが一致している
 - README、LICENSE、SECURITY.md、PREFLIGHT.md、PUBLIC_READY.mdを人間が確認している
 - 最終treeと全commit履歴のsecret・個人path検査が成功している
-- PyPIのTrusted Publishingを`nexus-ai-2045/ai-ratchet-gate`へ設定している
-- public化、tag、GitHub Release、PyPI送信を個別に承認している
+- public化、tag、GitHub Release作成を個別に承認している
+- PyPIへ送信しない方針が維持されている
 
 ## 配布物の検証
 
-release用依存を導入し、wheelとsource distributionを隔離ビルドします。続いてTwineでmetadataと
-READMEの表示互換性を検査し、新しいvenvへ両形式からインストールしてCLIを確認します。
+release用依存を導入し、wheelとsource distributionを隔離ビルドします。配布物のmetadataと
+同梱ファイルを検査し、新しいvenvへ両形式からインストールしてCLIを確認します。
 
-生成物のSHA-256を記録し、GitHub Releaseへ添付するファイルとPyPIへ送るファイルが同一で
+生成物のSHA-256を記録し、GitHub Releaseへ添付するファイルと検証済みファイルが同一で
 あることを照合します。`dist`の既存ファイルを再利用せず、最終tagから作り直します。
 
 ## 実行順序
@@ -24,11 +24,10 @@ READMEの表示互換性を検査し、新しいvenvへ両形式からインス�
 4. 署名対象を確認して`v0.1.0` tagを作成し、pushを別承認する
 5. 同じtagからwheelとsource distributionを再生成してhashを照合する
 6. GitHub Releaseのtitle、本文、添付物を提示し、作成を別承認する
-7. PyPIのproject名、version、metadata、配布物hashを提示し、送信を別承認する
-8. GitHub ReleaseとPyPIを読み戻し、インストールsmoke testを実施する
+7. GitHub Releaseを読み戻し、添付物のhash照合とインストールsmoke testを実施する
 
 ## ロールバックと制約
 
-公開済みのPyPI versionは置換できません。問題がある場合はそのversionをyankし、修正版を新しい
-versionで配布します。GitHub Releaseの削除やtagの付け直しを通常の修正手段にせず、公開後の
-変更履歴を残します。public化後にPRIVATEへ戻しても、既に取得された履歴や配布物は回収できません。
+GitHub Releaseの削除やtagの付け直しを通常の修正手段にせず、問題がある場合は修正版を新しい
+versionで配布して変更履歴を残します。public化後にPRIVATEへ戻しても、既に取得された履歴や
+配布物は回収できません。
