@@ -121,12 +121,19 @@ def write_sdist(
     omit: str | None = None,
     extra_file: str | None = None,
     license_data: bytes | None = None,
+    source_overrides: dict[str, bytes] | None = None,
 ) -> None:
+    source_overrides = source_overrides or {}
     with tarfile.open(path, "w:gz") as archive:
         files = {
             **{suffix: b"test" for suffix in CHECK.ALLOWED_SDIST_SUFFIXES},
             "PKG-INFO": metadata_bytes(version=version),
         }
+        for wheel_name in CHECK.REQUIRED_WHEEL_SUFFIXES:
+            source_name = f"src/{wheel_name}"
+            files[source_name] = source_overrides.get(
+                source_name, (ROOT / source_name).read_bytes()
+            )
         files["LICENSE"] = (
             (ROOT / "LICENSE").read_bytes() if license_data is None else license_data
         )
@@ -304,6 +311,18 @@ def test_release_artifacts_match_reviewed_source(tmp_path: Path) -> None:
         module_overrides={"ai_ratchet_gate/cli.py": b"def main(): return 0\n"},
     )
     write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_match_reviewed_sdist_source(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(
+        sdist,
+        source_overrides={"src/ai_ratchet_gate/cli.py": b"def main(): return 0\n"},
+    )
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
 

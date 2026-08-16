@@ -279,6 +279,16 @@ def validate_sdist(
         if license_stream is None:
             raise ValueError("sdistのLICENSEを読み込めません")
         license_data = license_stream.read()
+        source_data: dict[str, bytes] = {}
+        for wheel_name in REQUIRED_WHEEL_SUFFIXES:
+            source_name = f"src/{wheel_name}"
+            source_member = files.get(f"{root}/{source_name}")
+            if source_member is None:
+                raise ValueError(f"sdistに実行コードがありません: {source_name}")
+            source_stream = archive.extractfile(source_member)
+            if source_stream is None:
+                raise ValueError(f"sdistの実行コードを読み込めません: {source_name}")
+            source_data[source_name] = source_stream.read()
     allowed_names = {f"{root}/{name}" for name in ALLOWED_SDIST_SUFFIXES} | {
         metadata_files[0]
     }
@@ -291,6 +301,11 @@ def validate_sdist(
         )
     if license_data != (ROOT / "LICENSE").read_bytes():
         raise ValueError("sdistのLICENSE本文がrepo正本と一致しません")
+    for source_name, data in source_data.items():
+        if data != (ROOT / source_name).read_bytes():
+            raise ValueError(
+                f"sdistの実行コードがrepo正本と一致しません: {source_name}"
+            )
 
 
 def select_one(dist_dir: Path, pattern: str) -> Path:
