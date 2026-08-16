@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import email.message
+import hashlib
 import importlib.util
 import io
 import tarfile
@@ -44,36 +46,45 @@ def write_wheel(
     include_entry_point: bool = True,
     include_license: bool = True,
     requires_python: str = ">=3.11",
+    extra_file: str | None = None,
+    incomplete_record: bool = False,
 ) -> None:
-    with zipfile.ZipFile(path, "w") as archive:
-        for name in CHECK.REQUIRED_WHEEL_SUFFIXES:
-            archive.writestr(f"{module_prefix}{name}", "")
-        metadata_file = f"{dist_info}METADATA"
-        archive.writestr(
-            metadata_file,
-            metadata_bytes(
-                private_classifier=private_classifier,
-                requires_python=requires_python,
-            ),
+    members: dict[str, bytes | str] = {
+        f"{module_prefix}{name}": "" for name in CHECK.REQUIRED_WHEEL_SUFFIXES
+    }
+    metadata_file = f"{dist_info}METADATA"
+    members[metadata_file] = metadata_bytes(
+        private_classifier=private_classifier,
+        requires_python=requires_python,
+    )
+    wheel_file = f"{dist_info}WHEEL"
+    record_file = f"{dist_info}RECORD"
+    if include_controls:
+        members[wheel_file] = f"Wheel-Version: {wheel_version}\nTag: py3-none-any\n"
+    if include_entry_point:
+        members[f"{dist_info}entry_points.txt"] = (
+            "[console_scripts]\nai-ratchet-gate = ai_ratchet_gate.cli:main\n"
         )
+    if include_license:
+        members[f"{dist_info}licenses/LICENSE"] = "MIT"
+    members[f"{dist_info}top_level.txt"] = "ai_ratchet_gate\n"
+    if extra_file is not None:
+        members[extra_file] = "unexpected"
+
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
         if include_controls:
-            wheel_file = f"{dist_info}WHEEL"
-            record_file = f"{dist_info}RECORD"
-            archive.writestr(
-                wheel_file,
-                f"Wheel-Version: {wheel_version}\nTag: py3-none-any\n",
-            )
-            archive.writestr(
-                record_file,
-                f"{metadata_file},,\n{wheel_file},,\n{record_file},,\n",
-            )
-        if include_entry_point:
-            archive.writestr(
-                f"{dist_info}entry_points.txt",
-                "[console_scripts]\nai-ratchet-gate = ai_ratchet_gate.cli:main\n",
-            )
-        if include_license:
-            archive.writestr(f"{dist_info}licenses/LICENSE", "MIT")
+            recorded = list(members.items())
+            if incomplete_record:
+                recorded = [(metadata_file, members[metadata_file]), (wheel_file, members[wheel_file])]
+            rows = []
+            for name, data in recorded:
+                raw = data if isinstance(data, bytes) else data.encode("utf-8")
+                digest = base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=")
+                rows.append(f"{name},sha256={digest.decode('ascii')},{len(raw)}")
+            rows.append(f"{record_file},,")
+            archive.writestr(record_file, "\n".join(rows) + "\n")
 
 
 def write_sdist(
@@ -216,6 +227,24 @@ def test_release_artifacts_validate_requires_python(tmp_path: Path) -> None:
     wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel, requires_python=">=99")
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_require_complete_record(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, incomplete_record=True)
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_reject_unexpected_wheel_files(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, extra_file="sitecustomize.py")
     write_sdist(sdist)
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1

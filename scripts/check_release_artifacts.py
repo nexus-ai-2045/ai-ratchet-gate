@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import configparser
 import csv
 import email
@@ -122,8 +123,20 @@ def validate_wheel(
         record_file = f"{dist_info}RECORD"
         entry_points_file = f"{dist_info}entry_points.txt"
         license_file = f"{dist_info}licenses/LICENSE"
+        top_level_file = f"{dist_info}top_level.txt"
         if not {wheel_file, record_file, entry_points_file, license_file}.issubset(names):
             raise ValueError("wheelの制御ファイル、entry point、またはLICENSEがありません")
+        allowed_names = set(REQUIRED_WHEEL_SUFFIXES) | {
+            metadata_files[0],
+            wheel_file,
+            record_file,
+            entry_points_file,
+            license_file,
+            top_level_file,
+        }
+        unexpected = sorted(names - allowed_names)
+        if unexpected:
+            raise ValueError(f"wheelに未許可ファイルがあります: {', '.join(unexpected)}")
 
         validate_metadata(
             archive.read(metadata_files[0]),
@@ -148,9 +161,17 @@ def validate_wheel(
         records = list(
             csv.reader(io.StringIO(archive.read(record_file).decode("utf-8")))
         )
-        recorded_names = {row[0] for row in records if row}
-        if not {metadata_files[0], wheel_file, record_file}.issubset(recorded_names):
-            raise ValueError("RECORDにwheel制御ファイルが記録されていません")
+        record_by_name = {row[0]: row for row in records if row}
+        if set(record_by_name) != names:
+            raise ValueError("RECORDのファイル一覧がwheel内容と一致しません")
+        for name in names - {record_file}:
+            row = record_by_name[name]
+            if len(row) != 3 or not row[1].startswith("sha256=") or not row[2]:
+                raise ValueError(f"RECORDのhashまたはsizeがありません: {name}")
+            data = archive.read(name)
+            digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
+            if row[1] != f"sha256={digest.decode('ascii')}" or row[2] != str(len(data)):
+                raise ValueError(f"RECORDのhashまたはsizeが不一致です: {name}")
     require_exact_names(names, REQUIRED_WHEEL_SUFFIXES)
 
 
