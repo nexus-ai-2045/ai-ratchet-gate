@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import email
 import hashlib
+import io
 import tarfile
 import tomllib
 import zipfile
@@ -53,14 +55,10 @@ def require_suffixes(names: set[str], suffixes: tuple[str, ...]) -> None:
         raise ValueError(f"配布物に必須ファイルがありません: {', '.join(missing)}")
 
 
-def validate_wheel(path: Path, expected_name: str, expected_version: str) -> None:
-    with zipfile.ZipFile(path) as archive:
-        names = set(archive.namelist())
-        metadata_files = [name for name in names if name.endswith(".dist-info/METADATA")]
-        if len(metadata_files) != 1:
-            raise ValueError("wheelのMETADATAが一意ではありません")
-        metadata = email.message_from_bytes(archive.read(metadata_files[0]))
-
+def validate_metadata(
+    raw_metadata: bytes, expected_name: str, expected_version: str
+) -> None:
+    metadata = email.message_from_bytes(raw_metadata)
     if metadata["Name"] != expected_name:
         raise ValueError(f"package名が不一致です: {metadata['Name']}")
     if metadata["Version"] != expected_version:
@@ -69,12 +67,48 @@ def validate_wheel(path: Path, expected_name: str, expected_version: str) -> Non
         raise ValueError(f"licenseがMITではありません: {metadata['License-Expression']}")
     if PRIVATE_CLASSIFIER not in metadata.get_all("Classifier", []):
         raise ValueError("PyPIへの誤送信を拒否するclassifierがありません")
+
+
+def validate_wheel(path: Path, expected_name: str, expected_version: str) -> None:
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        metadata_files = [name for name in names if name.endswith(".dist-info/METADATA")]
+        if len(metadata_files) != 1:
+            raise ValueError("wheelのMETADATAが一意ではありません")
+        dist_info = metadata_files[0].removesuffix("METADATA")
+        wheel_file = f"{dist_info}WHEEL"
+        record_file = f"{dist_info}RECORD"
+        if wheel_file not in names or record_file not in names:
+            raise ValueError("wheelのWHEELまたはRECORDがありません")
+
+        validate_metadata(archive.read(metadata_files[0]), expected_name, expected_version)
+        wheel_metadata = email.message_from_bytes(archive.read(wheel_file))
+        if not wheel_metadata["Wheel-Version"]:
+            raise ValueError("WHEELにWheel-Versionがありません")
+        records = list(
+            csv.reader(io.StringIO(archive.read(record_file).decode("utf-8")))
+        )
+        recorded_names = {row[0] for row in records if row}
+        if not {metadata_files[0], wheel_file, record_file}.issubset(recorded_names):
+            raise ValueError("RECORDにwheel制御ファイルが記録されていません")
     require_suffixes(names, REQUIRED_WHEEL_SUFFIXES)
 
 
-def validate_sdist(path: Path) -> None:
+def validate_sdist(path: Path, expected_name: str, expected_version: str) -> None:
     with tarfile.open(path, "r:gz") as archive:
-        names = {member.name for member in archive.getmembers() if member.isfile()}
+        files = {member.name: member for member in archive.getmembers() if member.isfile()}
+        names = set(files)
+        metadata_files = [
+            name
+            for name in names
+            if name.endswith("/PKG-INFO") and name.count("/") == 1
+        ]
+        if len(metadata_files) != 1:
+            raise ValueError("sdistのPKG-INFOが一意ではありません")
+        stream = archive.extractfile(files[metadata_files[0]])
+        if stream is None:
+            raise ValueError("sdistのPKG-INFOを読み込めません")
+        validate_metadata(stream.read(), expected_name, expected_version)
     require_suffixes(names, REQUIRED_SDIST_SUFFIXES)
 
 
@@ -95,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         wheel = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}-*.whl")
         sdist = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}.tar.gz")
         validate_wheel(wheel, name, version)
-        validate_sdist(sdist)
+        validate_sdist(sdist, name, version)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"ERROR [release-artifacts]: {error}")
         return 1

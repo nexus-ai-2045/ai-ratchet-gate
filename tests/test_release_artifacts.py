@@ -16,26 +16,45 @@ CHECK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECK)
 
 
-def write_wheel(path: Path, *, private_classifier: bool = True) -> None:
+def metadata_bytes(
+    *, private_classifier: bool = True, version: str = "0.1.0"
+) -> bytes:
     metadata = email.message.Message()
     metadata["Name"] = "ai-ratchet-gate"
-    metadata["Version"] = "0.1.0"
+    metadata["Version"] = version
     metadata["License-Expression"] = "MIT"
     if private_classifier:
         metadata["Classifier"] = CHECK.PRIVATE_CLASSIFIER
+    return metadata.as_bytes()
+
+
+def write_wheel(
+    path: Path, *, private_classifier: bool = True, include_controls: bool = True
+) -> None:
+    dist_info = "ai_ratchet_gate-0.1.0.dist-info/"
 
     with zipfile.ZipFile(path, "w") as archive:
         for name in CHECK.REQUIRED_WHEEL_SUFFIXES:
             archive.writestr(name, "")
-        archive.writestr(
-            "ai_ratchet_gate-0.1.0.dist-info/METADATA", metadata.as_bytes()
-        )
+        metadata_file = f"{dist_info}METADATA"
+        archive.writestr(metadata_file, metadata_bytes(private_classifier=private_classifier))
+        if include_controls:
+            wheel_file = f"{dist_info}WHEEL"
+            record_file = f"{dist_info}RECORD"
+            archive.writestr(wheel_file, "Wheel-Version: 1.0\nTag: py3-none-any\n")
+            archive.writestr(
+                record_file,
+                f"{metadata_file},,\n{wheel_file},,\n{record_file},,\n",
+            )
 
 
-def write_sdist(path: Path) -> None:
+def write_sdist(path: Path, *, version: str = "0.1.0") -> None:
     with tarfile.open(path, "w:gz") as archive:
-        for suffix in CHECK.REQUIRED_SDIST_SUFFIXES:
-            data = b"test"
+        files = {
+            **{suffix: b"test" for suffix in CHECK.REQUIRED_SDIST_SUFFIXES},
+            "PKG-INFO": metadata_bytes(version=version),
+        }
+        for suffix, data in files.items():
             info = tarfile.TarInfo(f"ai_ratchet_gate-0.1.0/{suffix}")
             info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
@@ -55,5 +74,23 @@ def test_release_artifacts_require_pypi_rejection_classifier(tmp_path: Path) -> 
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel, private_classifier=False)
     write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_require_wheel_control_files(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, include_controls=False)
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_validate_sdist_metadata(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist, version="9.9.9")
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
