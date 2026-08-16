@@ -21,5 +21,5 @@
 ### 公開準備
 
 - 公開時のライセンスとしてMIT Licenseを採用
-- GitHub ReleaseとPyPIの両方を配布先として採用
-- visibility変更、tag、release作成、パッケージ送信は個別承認のまま維持
+- 配布先はGitHub Releaseだけとし、PyPIへは送信しない方針を採用
+- visibility変更、tag、release作成は個別承認のまま維持

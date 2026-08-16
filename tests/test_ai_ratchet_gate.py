@@ -35,6 +35,7 @@ def test_legacy_script_ignores_unrelated_src_package(tmp_path: Path) -> None:
     (unrelated_src / "__init__.py").write_text("", encoding="utf-8")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(tmp_path)
+    env["PYTHONUTF8"] = "1"
 
     completed = subprocess.run(
         [sys.executable, str(ROOT / "ai_ratchet_gate.py"), "--help"],

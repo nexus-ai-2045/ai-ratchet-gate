@@ -33,3 +33,11 @@ jobs:
 
       - name: Verify with the selected Python
         run: python scripts/verify.py
+
+      - name: Build and install release artifacts
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        run: |
+          python -m pip install ".[release]"
+          python -m build
+          python scripts/check_release_artifacts.py --dist-dir dist
+          python scripts/smoke_install_artifacts.py --dist-dir dist
