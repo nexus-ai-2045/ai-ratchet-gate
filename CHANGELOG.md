@@ -1,0 +1,19 @@
+# 変更履歴
+
+このプロジェクトの重要な変更を記録します。
+
+## 0.1.0（未リリース）
+
+### 追加
+
+- `tracked ∧ ignored` の新規増加を止めるラチェット型ゲート
+- 現在の矛盾を記録するbaselineと、意図的な更新経路
+- Pythonパッケージとソースcheckoutの両方から使えるCLI
+- Ubuntu・Windows、Python 3.11・3.13のCI
+- 日本語の利用者向け文書とRepo Preflight
+
+### 安全性
+
+- gitによる列挙に失敗した場合はfail-closedで停止
+- baseline変更とskip利用を人間レビューの対象として明示
+- PRIVATE運用を維持し、公開・release・配布は別承認とした
