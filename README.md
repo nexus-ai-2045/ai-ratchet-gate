@@ -124,5 +124,6 @@ Repo Preflightの成功は、push、merge、公開の承認ではありません
 
 ## Repository visibility
 
-このrepositoryは現在PRIVATEです。ソフトウェアにはMIT Licenseを採用していますが、
-public化、tag、GitHub Release作成はそれぞれ別の承認境界です。PyPIへは送信しません。
+このrepositoryはPUBLICです。ソフトウェアにはMIT Licenseを採用し、配布物は
+[GitHub Release](https://github.com/nexus-ai-2045/ai-ratchet-gate/releases)で公開します。
+PyPIへは送信しません。tag、GitHub Release作成、将来の公開物はそれぞれ人間レビューを経ます。
