@@ -15,7 +15,7 @@ def test_publication_metadata_matches_the_approved_identity() -> None:
     assert project["name"] == "ai-ratchet-gate"
     assert project["version"] == "0.1.0"
     assert project["license"] == "MIT"
-    assert "Private :: Do Not Upload" not in project["classifiers"]
+    assert "Private :: Do Not Upload" in project["classifiers"]
     assert project["authors"] == [{"name": "nexus-ai-2045"}]
     assert project["urls"]["Source"] == (
         "https://github.com/nexus-ai-2045/ai-ratchet-gate"

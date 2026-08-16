@@ -13,6 +13,10 @@
 release用依存を導入し、wheelとsource distributionを隔離ビルドします。配布物のmetadataと
 同梱ファイルを検査し、新しいvenvへ両形式からインストールしてCLIを確認します。
 
+ビルド後は`python scripts/check_release_artifacts.py --dist-dir dist`を実行します。この検査は
+外部送信を行わず、名前、version、MIT license、PyPI拒否classifier、必須ファイル、SHA-256を
+確認します。
+
 生成物のSHA-256を記録し、GitHub Releaseへ添付するファイルと検証済みファイルが同一で
 あることを照合します。`dist`の既存ファイルを再利用せず、最終tagから作り直します。
 
