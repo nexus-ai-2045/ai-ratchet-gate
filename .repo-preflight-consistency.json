@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nexus-ai-2045/repo-preflight/main/schemas/repository-consistency.schema.json",
+  "schema": "repo-preflight.consistency/v1",
+  "mode": "shadow",
+  "ratchet": {"baseline": []},
+  "markdown": {
+    "include": [
+      "README.md",
+      "SECURITY.md",
+      "CONTRIBUTING.md",
+      "PREFLIGHT.md"
+    ]
+  },
+  "readme_contracts": {
+    "required_paths": ["ai_ratchet_gate.py"],
+    "commands": [
+      {
+        "text": "python ai_ratchet_gate.py --repo .",
+        "paths": ["ai_ratchet_gate.py"]
+      }
+    ]
+  },
+  "impact_map": [
+    {
+      "change": ["ai_ratchet_gate.py"],
+      "requires_any": ["tests/**", "README.md"]
+    },
+    {
+      "change": [".github/**", ".repo-preflight-consistency.json"],
+      "requires_any": ["tests/**", "README.md", "PREFLIGHT.md"]
+    }
+  ],
+  "generated_artifacts": []
+}
