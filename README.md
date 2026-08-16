@@ -34,7 +34,16 @@ AI エージェント運用では、この事故は人間だけの時より起�
 
 ## 使い方
 
-依存はありません (Python 3.11+ / git のみ)。
+依存はありません (Python 3.11+ / git のみ)。リポジトリからインストールすると、
+どのディレクトリからでも `ai-ratchet-gate` コマンドを実行できます。
+
+```bash
+python -m pip install .
+ai-ratchet-gate --repo . --update-baseline
+ai-ratchet-gate --repo .
+```
+
+ソースcheckoutから従来どおり直接実行する方法も維持しています。
 
 ```bash
 # 導入: 現状を baseline 化 (既定: <repo>/.ai-ratchet-gate/baseline.txt)
@@ -87,8 +96,12 @@ deny 時のエラー文には修復手順が同梱されます:
 ## テスト
 
 ```bash
-python -m pytest -q   # 12 tests
+python -m pip install -e ".[test]"
+python scripts/verify.py
 ```
+
+検証はこの入口へ統一しています。選択したPythonにtest依存がない場合は、別環境へ暗黙に
+フォールバックせず、同じPythonへインストールするためのコマンドを表示して停止します。
 
 ## Repo Preflight
 

@@ -22,6 +22,12 @@ from ai_ratchet_gate import (  # noqa: E402
 )
 
 
+def test_package_exposes_version() -> None:
+    import ai_ratchet_gate
+
+    assert ai_ratchet_gate.__version__ == "0.1.0"
+
+
 def _git_env() -> dict[str, str]:
     """親プロセスの GIT_* を持ち込まない (GIT_DIR 継承で実 repo を壊す事故の自衛)。"""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
