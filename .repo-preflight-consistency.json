@@ -8,17 +8,16 @@
       "README.md",
       "SECURITY.md",
       "CONTRIBUTING.md",
-      "PREFLIGHT.md"
+      "PREFLIGHT.md",
+      "PUBLIC_READY.md",
+      "CHANGELOG.md",
+      "OPERATIONS.md",
+      "docs/architecture.md",
+      "docs/threat-model.md"
     ]
   },
   "readme_contracts": {
-    "required_paths": ["ai_ratchet_gate.py", "pyproject.toml", "src/ai_ratchet_gate/cli.py"],
-    "commands": [
-      {
-        "text": "python ai_ratchet_gate.py --repo .",
-        "paths": ["ai_ratchet_gate.py", "src/ai_ratchet_gate/cli.py"]
-      }
-    ]
+    "required_paths": ["ai_ratchet_gate.py", "pyproject.toml", "src/ai_ratchet_gate/cli.py"]
   },
   "impact_map": [
     {
