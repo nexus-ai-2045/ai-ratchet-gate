@@ -23,7 +23,7 @@
   "impact_map": [
     {
       "change": ["ai_ratchet_gate.py"],
-      "requires_any": ["tests/**", "README.md"]
+      "requires_any": ["tests/**"]
     },
     {
       "change": [".github/**", ".repo-preflight-consistency.json"],
