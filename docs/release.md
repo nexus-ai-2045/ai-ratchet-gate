@@ -19,6 +19,8 @@ release用依存を導入し、wheelとsource distributionを隔離ビルドし�
 
 生成物のSHA-256を記録し、GitHub Releaseへ添付するファイルと検証済みファイルが同一で
 あることを照合します。`dist`の既存ファイルを再利用せず、最終tagから作り直します。
+CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がwheelとsdistを別々の
+隔離venvへインストールしてCLIを起動します。独自のファイル検査だけを成功根拠にしません。
 
 ## 実行順序
 

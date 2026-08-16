@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import configparser
 import csv
 import email
 import hashlib
@@ -36,11 +37,18 @@ REQUIRED_SDIST_SUFFIXES = (
 )
 
 
-def project_metadata() -> tuple[str, str]:
+def project_metadata() -> tuple[str, str, str, str, str]:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
         "project"
     ]
-    return project["name"], project["version"]
+    command, target = next(iter(project["scripts"].items()))
+    return (
+        project["name"],
+        project["version"],
+        project["requires-python"],
+        command,
+        target,
+    )
 
 
 def sha256(path: Path) -> str:
@@ -49,12 +57,6 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def require_suffixes(names: set[str], suffixes: tuple[str, ...]) -> None:
-    missing = [suffix for suffix in suffixes if not any(n.endswith(suffix) for n in names)]
-    if missing:
-        raise ValueError(f"配布物に必須ファイルがありません: {', '.join(missing)}")
 
 
 def require_exact_names(names: set[str], required_names: tuple[str, ...]) -> None:
@@ -70,7 +72,10 @@ def wheel_dist_info(expected_name: str, expected_version: str) -> str:
 
 
 def validate_metadata(
-    raw_metadata: bytes, expected_name: str, expected_version: str
+    raw_metadata: bytes,
+    expected_name: str,
+    expected_version: str,
+    expected_requires_python: str,
 ) -> None:
     metadata = email.message_from_bytes(raw_metadata)
     if metadata["Name"] != expected_name:
@@ -79,11 +84,29 @@ def validate_metadata(
         raise ValueError(f"versionが不一致です: {metadata['Version']}")
     if metadata["License-Expression"] != "MIT":
         raise ValueError(f"licenseがMITではありません: {metadata['License-Expression']}")
+    if metadata["Requires-Python"] != expected_requires_python:
+        raise ValueError(
+            f"Requires-Pythonが不一致です: {metadata['Requires-Python']}"
+        )
+    if "LICENSE" not in metadata.get_all("License-File", []):
+        raise ValueError("metadataにLicense-File: LICENSEがありません")
     if PRIVATE_CLASSIFIER not in metadata.get_all("Classifier", []):
         raise ValueError("PyPIへの誤送信を拒否するclassifierがありません")
 
 
-def validate_wheel(path: Path, expected_name: str, expected_version: str) -> None:
+def validate_wheel(
+    path: Path,
+    expected_name: str,
+    expected_version: str,
+    expected_requires_python: str,
+    expected_command: str,
+    expected_target: str,
+) -> None:
+    expected_filename = (
+        f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}-py3-none-any.whl"
+    )
+    if path.name != expected_filename:
+        raise ValueError(f"wheelファイル名が不正です: {path.name}")
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         metadata_files = [name for name in names if name.endswith(".dist-info/METADATA")]
@@ -97,10 +120,21 @@ def validate_wheel(path: Path, expected_name: str, expected_version: str) -> Non
             )
         wheel_file = f"{dist_info}WHEEL"
         record_file = f"{dist_info}RECORD"
-        if wheel_file not in names or record_file not in names:
-            raise ValueError("wheelのWHEELまたはRECORDがありません")
+        entry_points_file = f"{dist_info}entry_points.txt"
+        license_file = f"{dist_info}licenses/LICENSE"
+        if not {wheel_file, record_file, entry_points_file, license_file}.issubset(names):
+            raise ValueError("wheelの制御ファイル、entry point、またはLICENSEがありません")
 
-        validate_metadata(archive.read(metadata_files[0]), expected_name, expected_version)
+        validate_metadata(
+            archive.read(metadata_files[0]),
+            expected_name,
+            expected_version,
+            expected_requires_python,
+        )
+        entry_points = configparser.ConfigParser(interpolation=None)
+        entry_points.read_string(archive.read(entry_points_file).decode("utf-8"))
+        if entry_points.get("console_scripts", expected_command, fallback=None) != expected_target:
+            raise ValueError(f"console entry pointが不一致です: {expected_command}")
         wheel_metadata = email.message_from_bytes(archive.read(wheel_file))
         wheel_version = wheel_metadata["Wheel-Version"]
         if not wheel_version:
@@ -120,7 +154,12 @@ def validate_wheel(path: Path, expected_name: str, expected_version: str) -> Non
     require_exact_names(names, REQUIRED_WHEEL_SUFFIXES)
 
 
-def validate_sdist(path: Path, expected_name: str, expected_version: str) -> None:
+def validate_sdist(
+    path: Path,
+    expected_name: str,
+    expected_version: str,
+    expected_requires_python: str,
+) -> None:
     with tarfile.open(path, "r:gz") as archive:
         files = {member.name: member for member in archive.getmembers() if member.isfile()}
         names = set(files)
@@ -134,8 +173,11 @@ def validate_sdist(path: Path, expected_name: str, expected_version: str) -> Non
         stream = archive.extractfile(files[metadata_files[0]])
         if stream is None:
             raise ValueError("sdistのPKG-INFOを読み込めません")
-        validate_metadata(stream.read(), expected_name, expected_version)
-    require_suffixes(names, REQUIRED_SDIST_SUFFIXES)
+        validate_metadata(
+            stream.read(), expected_name, expected_version, expected_requires_python
+        )
+    root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
+    require_exact_names(names, tuple(f"{root}/{name}" for name in REQUIRED_SDIST_SUFFIXES))
 
 
 def select_one(dist_dir: Path, pattern: str) -> Path:
@@ -151,11 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        name, version = project_metadata()
+        name, version, requires_python, command, target = project_metadata()
         wheel = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}-*.whl")
         sdist = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}.tar.gz")
-        validate_wheel(wheel, name, version)
-        validate_sdist(sdist, name, version)
+        validate_wheel(wheel, name, version, requires_python, command, target)
+        validate_sdist(sdist, name, version, requires_python)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"ERROR [release-artifacts]: {error}")
         return 1
