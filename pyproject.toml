@@ -8,10 +8,24 @@ version = "0.1.0"
 description = "trackedかつignoredなGit矛盾の新規増加を止めるラチェット型ゲート"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
 authors = [{name = "nexus-ai-2045"}]
-classifiers = ["Private :: Do Not Upload"]
+keywords = ["git", "gitignore", "ratchet", "pre-commit", "ai-agent"]
+classifiers = [
+  "Private :: Do Not Upload",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+]
 dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/nexus-ai-2045/ai-ratchet-gate#readme"
+Issues = "https://github.com/nexus-ai-2045/ai-ratchet-gate/issues"
+Source = "https://github.com/nexus-ai-2045/ai-ratchet-gate"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
