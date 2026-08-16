@@ -12,7 +12,7 @@
 - 想定公開名義: `nexus-ai-2045`
 - 想定初回バージョン: `0.1.0`
 - 採用ライセンス: MIT
-- 採用配布先: GitHub ReleaseとPyPIの両方
+- 採用配布先: GitHub Releaseのみ（PyPIへは送信しない）
 
 この準備文書を含むcommitは、上記HEADの検査結果へ文書を追加する後続commitとして扱います。
 public化またはreleaseの直前に、最終HEADを対象として全項目を再検査します。
@@ -25,21 +25,20 @@ public化またはreleaseの直前に、最終HEADを対象として全項目を
 - 現在treeのsecret候補と個人pathは0件だった
 - `tracked ∧ ignored` は現存0件、新規0件だった
 - wheelとsource distributionの隔離ビルド、インストール、CLI smoke testが成功した
-- Twineによる両配布物のmetadata・README検査が成功した
-- 2026-08-16時点でPyPIの`ai-ratchet-gate` JSON APIは404だった。ただし名前は公開まで予約されない
+- wheelとsource distributionのmetadata、同梱ファイル、インストール結果を確認した
 - remote owner、操作アカウント、実効commit名義は`nexus-ai-2045`で一致した
 - リポジトリはPRIVATEであり、公開操作は行っていない
 
 ## 方針決定済み
 
 - MIT Licenseで公開する
-- GitHub ReleaseとPyPIの両方を使う
+- 配布はGitHub Releaseだけを使い、PyPIへは送信しない
 
 ## 公開前に人間判断が必要
 
 - `ai-ratchet-gate`という配布名の利用可否と所有権を公開先で確認する
 - 公開される全ファイルとcommit履歴を最終目視する
-- public化、tag、GitHub Release、パッケージ送信をそれぞれ明示承認する
+- public化、tag、GitHub Release作成をそれぞれ明示承認する
 
 ## 公開直前の機械検査
 
