@@ -11,11 +11,7 @@ gitignore は**追跡済みファイルには効きません**。「先に commi
 
 実際に起きた事故 (本ゲートの起源): 診断ツールの出力 2 ファイルがこの状態になり、7 つの作業
 セッションで push 阻害が再発。原因を言語化してから同類を機械列挙したところ、workspace 全体で
-**779 件**の同じ矛盾が見つかりました。列挙は git 組み込みコマンド 1 つです:
-
-```bash
-git ls-files -i -c --exclude-standard
-```
+**779 件**の同じ矛盾が見つかりました。この状態は git の標準機能だけで列挙できます。
 
 AI エージェント運用では、この事故は人間だけの時より起きやすくなります。エージェントは
 「push が通らないから commit で押し流す」という対症療法を高速に反復できてしまうためです。
@@ -43,32 +39,19 @@ flowchart LR
 
 ## 使い方
 
-依存はありません (Python 3.11+ / git のみ)。リポジトリからインストールすると、
-どのディレクトリからでも `ai-ratchet-gate` コマンドを実行できます。
+### AIを使う人
 
-```bash
-python -m pip install .
-ai-ratchet-gate --repo . --update-baseline
-ai-ratchet-gate --repo .
-```
+このリポジトリのGitHub URLを、普段使っているAIのチャットへコピー＆ペーストし、
+「このラチェットゲートを私のリポジトリへ導入して」と依頼してください。
+AIには、導入先の現状確認、baselineの作成、commit前の検査への接続、テストまで任せられます。
+生成された変更は、そのまま採用せず、必ず差分を人間がレビューしてください。
 
-ソースcheckoutから従来どおり直接実行する方法も維持しています。
+### 手動で導入する人
 
-```bash
-# 導入: 現状を baseline 化 (既定: <repo>/.ai-ratchet-gate/baseline.txt)
-python ai_ratchet_gate.py --repo . --update-baseline
-
-# 検査: 新規の矛盾があれば exit 1 + 修復手順を表示
-python ai_ratchet_gate.py --repo .
-```
-
-pre-commit への配線例:
-
-```bash
-if ! python ai_ratchet_gate.py --repo "$PROJECT_ROOT"; then
-    exit 1
-fi
-```
+必要なのはPython 3.11以降とgitだけです。Pythonパッケージとしてインストールする方法と、
+ソースcheckoutから直接実行する方法があります。初回に現在の矛盾をbaselineとして記録し、
+以後のcommit前に検査を実行するよう接続してください。具体的なオプションはコマンドの
+ヘルプで確認できます。
 
 deny 時のエラー文には修復手順が同梱されます:
 生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` /
@@ -77,6 +60,7 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## 設計原則
 
+- **tracked ∧ ignored**: Git で追跡済みでありながら、`.gitignore` の対象にもなっているファイルを検出する
 - **fail-closed**: 列挙に失敗した状態で OK を返さない。baseline が無ければ初期化を要求して止まる
 - **増分のみ**: 既存負債で今日の commit を止めない。締まる方向 (baseline が縮む) には自由
 - **可視な例外**: baseline は commit されるファイルなので、こっそり緩めることができない
@@ -84,7 +68,8 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## 限界 (正直に)
 
-- 検出するのは「tracked∧ignored」という**1 つの不変条件だけ**。品質全般のゲートではない
+- 検出するのは「tracked ∧ ignored」という**1 つの不変条件だけ**。既存の矛盾は baseline として扱い、
+  新たな増加をラチェット方式で阻止する。品質全般のゲートではない
 - baseline はパス集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
   同一パスが baseline に出入りを繰り返す「往復発散」は検出しない
 - hook を素通りする経路 (`--no-verify`、hook 未導入環境からの commit) は止められない。
@@ -104,12 +89,7 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## テスト
 
-```bash
-python -m pip install -e ".[test]"
-python scripts/verify.py
-```
-
-検証はこの入口へ統一しています。選択したPythonにtest依存がない場合は、別環境へ暗黙に
+検証は `scripts/verify.py` へ統一しています。選択したPythonにtest依存がない場合は、別環境へ暗黙に
 フォールバックせず、同じPythonへインストールするためのコマンドを表示して停止します。
 
 ## Repo Preflight
@@ -117,10 +97,6 @@ python scripts/verify.py
 pushやPull Requestの前には、共通ツール
 [`repo-preflight`](https://github.com/nexus-ai-2045/repo-preflight)で、secret候補、個人path、
 必須文書、実装・テスト・説明の整合性を検査します。
-
-```bash
-python path/to/repo-preflight/scripts/readiness_scan.py --repo .
-```
 
 `.repo-preflight-consistency.json`には、このリポジトリ固有の変更連鎖だけを宣言します。
 検査ロジックはコピーせず、`repo-preflight`を正本として使います。導入直後は`shadow`で
