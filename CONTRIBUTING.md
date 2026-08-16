@@ -10,9 +10,14 @@
 4. 次の検証を実行する。
 
 ```bash
-python -m pytest -q
+python -m pip install -e ".[test]"
+python scripts/verify.py
 python ai_ratchet_gate.py --repo .
 ```
+
+`pytest`を直接実行せず、`scripts/verify.py`を標準経路にします。このスクリプトは、選択した
+Python自身にtest依存があることを先に検査し、別のPython環境を誤って使った場合は修復コマンドを
+表示して停止します。
 
 5. repo-preflightでsecret候補、個人path、必須文書、差分整合性を検査する。
 6. commit、push、Pull Request、mergeはそれぞれの承認境界を守る。
