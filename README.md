@@ -119,5 +119,5 @@ Repo Preflightの成功は、push、merge、公開の承認ではありません
 
 ## Repository visibility
 
-この repository は private 運用を前提とします。ライセンスは All rights reserved で、
-public 化は別の承認境界です (public 化時に OSS ライセンスへの差し替えを再判断します)。
+このrepositoryは現在PRIVATEです。ソフトウェアにはMIT Licenseを採用していますが、
+public化、GitHub Release、パッケージ送信はそれぞれ別の承認境界です。

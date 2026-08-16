@@ -13,7 +13,8 @@
       "CHANGELOG.md",
       "OPERATIONS.md",
       "docs/architecture.md",
-      "docs/threat-model.md"
+      "docs/threat-model.md",
+      "docs/release.md"
     ]
   },
   "readme_contracts": {
