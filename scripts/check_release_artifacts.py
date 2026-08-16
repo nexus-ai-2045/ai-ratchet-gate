@@ -8,6 +8,7 @@ import csv
 import email
 import hashlib
 import io
+import re
 import tarfile
 import tomllib
 import zipfile
@@ -22,6 +23,7 @@ REQUIRED_WHEEL_SUFFIXES = (
     "ai_ratchet_gate/cli.py",
 )
 REQUIRED_SDIST_SUFFIXES = (
+    "pyproject.toml",
     "README.md",
     "LICENSE",
     "SECURITY.md",
@@ -55,6 +57,18 @@ def require_suffixes(names: set[str], suffixes: tuple[str, ...]) -> None:
         raise ValueError(f"配布物に必須ファイルがありません: {', '.join(missing)}")
 
 
+def require_exact_names(names: set[str], required_names: tuple[str, ...]) -> None:
+    missing = [name for name in required_names if name not in names]
+    if missing:
+        raise ValueError(f"配布物に必須ファイルがありません: {', '.join(missing)}")
+
+
+def wheel_dist_info(expected_name: str, expected_version: str) -> str:
+    normalized_name = re.sub(r"[-_.]+", "_", expected_name)
+    normalized_version = expected_version.replace("-", "_")
+    return f"{normalized_name}-{normalized_version}.dist-info/"
+
+
 def validate_metadata(
     raw_metadata: bytes, expected_name: str, expected_version: str
 ) -> None:
@@ -76,6 +90,11 @@ def validate_wheel(path: Path, expected_name: str, expected_version: str) -> Non
         if len(metadata_files) != 1:
             raise ValueError("wheelのMETADATAが一意ではありません")
         dist_info = metadata_files[0].removesuffix("METADATA")
+        expected_dist_info = wheel_dist_info(expected_name, expected_version)
+        if dist_info != expected_dist_info:
+            raise ValueError(
+                f"wheelのdist-info名が不一致です: {dist_info.removesuffix('/')}"
+            )
         wheel_file = f"{dist_info}WHEEL"
         record_file = f"{dist_info}RECORD"
         if wheel_file not in names or record_file not in names:
@@ -83,15 +102,22 @@ def validate_wheel(path: Path, expected_name: str, expected_version: str) -> Non
 
         validate_metadata(archive.read(metadata_files[0]), expected_name, expected_version)
         wheel_metadata = email.message_from_bytes(archive.read(wheel_file))
-        if not wheel_metadata["Wheel-Version"]:
+        wheel_version = wheel_metadata["Wheel-Version"]
+        if not wheel_version:
             raise ValueError("WHEELにWheel-Versionがありません")
+        try:
+            wheel_major = int(wheel_version.split(".", 1)[0])
+        except ValueError as error:
+            raise ValueError(f"Wheel-Versionが不正です: {wheel_version}") from error
+        if wheel_major != 1:
+            raise ValueError(f"未対応のWheel-Versionです: {wheel_version}")
         records = list(
             csv.reader(io.StringIO(archive.read(record_file).decode("utf-8")))
         )
         recorded_names = {row[0] for row in records if row}
         if not {metadata_files[0], wheel_file, record_file}.issubset(recorded_names):
             raise ValueError("RECORDにwheel制御ファイルが記録されていません")
-    require_suffixes(names, REQUIRED_WHEEL_SUFFIXES)
+    require_exact_names(names, REQUIRED_WHEEL_SUFFIXES)
 
 
 def validate_sdist(path: Path, expected_name: str, expected_version: str) -> None:
