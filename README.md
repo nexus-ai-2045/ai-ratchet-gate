@@ -90,6 +90,23 @@ deny 時のエラー文には修復手順が同梱されます:
 python -m pytest -q   # 12 tests
 ```
 
+## Repo Preflight
+
+pushやPull Requestの前には、共通ツール
+[`repo-preflight`](https://github.com/nexus-ai-2045/repo-preflight)で、secret候補、個人path、
+必須文書、実装・テスト・説明の整合性を検査します。
+
+```bash
+python path/to/repo-preflight/scripts/readiness_scan.py --repo .
+```
+
+`.repo-preflight-consistency.json`には、このリポジトリ固有の変更連鎖だけを宣言します。
+検査ロジックはコピーせず、`repo-preflight`を正本として使います。導入直後は`shadow`で
+誤検知を観測し、人間レビュー後に`ratchet`、さらに所見ゼロを確認してから`enforce`へ
+段階的に移行します。
+
+Repo Preflightの成功は、push、merge、公開の承認ではありません。
+
 ## Repository visibility
 
 この repository は private 運用を前提とします。ライセンスは All rights reserved で、
