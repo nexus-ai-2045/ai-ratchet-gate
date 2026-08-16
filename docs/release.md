@@ -5,7 +5,7 @@
 - 対象リポジトリ、公開名義、最終HEAD、CI、reviewが一致している
 - README、LICENSE、SECURITY.md、PREFLIGHT.md、PUBLIC_READY.mdを人間が確認している
 - 最終treeと全commit履歴のsecret・個人path検査が成功している
-- public化、tag、GitHub Release作成を個別に承認している
+- privateリポジトリのpublic化、tagのpush、GitHub Releaseの公開を必要に応じて個別に承認している
 - PyPIへ送信しない方針が維持されている
 
 ## 配布物の検証
@@ -25,12 +25,14 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
 ## 実行順序
 
 1. 最終HEADを再検査し、release commitを人間レビューする
-2. リポジトリのpublic化について、Web全体へ見える内容を提示して明示承認を得る
-3. public化後にvisibility、README、LICENSE、履歴をWebから読み戻す
-4. 署名対象を確認して`v<version>` tagを作成し、pushを別承認する
-5. 同じtagからwheelとsource distributionを再生成してhashを照合する
-6. GitHub Releaseのtitle、本文、添付物を提示し、作成を別承認する
+2. privateの場合だけ、Web全体へ見える内容を提示してpublic化の明示承認を得る。既にpublicなら
+   visibility、README、LICENSE、SECURITY.md、履歴をWebから再確認する
+3. 署名対象を確認して`v<version>` tagを作成し、pushを別承認する
+4. 同じtagからwheelとsource distributionを再生成してhashを照合する
+5. GitHub Releaseをdraftで作成し、title、本文、全添付物、hashを人間レビューする
+6. 明示承認後にdraftを公開する。公開前はREADMEのinstall URLを未公開versionへ切り替えない
 7. GitHub Releaseを読み戻し、添付物のhash照合とインストールsmoke testを実施する
+8. 公開確認後、必要ならREADMEのinstall URLを新versionへ切り替える別PRを作成する
 
 ## ロールバックと制約
 
