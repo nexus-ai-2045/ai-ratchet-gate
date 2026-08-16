@@ -27,6 +27,15 @@ AI エージェント運用では、この事故は人間だけの時より起�
 - baseline の増減は `--update-baseline` 経由でファイル diff になり、レビューで必ず見える
 - 列挙に失敗した場合は成功を報告しない (fail-closed)
 
+```mermaid
+flowchart LR
+    A["現在の矛盾を baseline に記録"] --> B["commit 前に再検査"]
+    B --> C{"baseline にない<br/>新規の矛盾があるか"}
+    C -- "ない" --> D["通過"]
+    C -- "ある" --> E["停止して修復手順を表示"]
+    E --> B
+```
+
 矛盾が新しく生まれる経路は 2 つで、両方止まります:
 
 1. `git add -f` で ignored ファイルを強制追加した
@@ -34,7 +43,16 @@ AI エージェント運用では、この事故は人間だけの時より起�
 
 ## 使い方
 
-依存はありません (Python 3.11+ / git のみ)。
+依存はありません (Python 3.11+ / git のみ)。リポジトリからインストールすると、
+どのディレクトリからでも `ai-ratchet-gate` コマンドを実行できます。
+
+```bash
+python -m pip install .
+ai-ratchet-gate --repo . --update-baseline
+ai-ratchet-gate --repo .
+```
+
+ソースcheckoutから従来どおり直接実行する方法も維持しています。
 
 ```bash
 # 導入: 現状を baseline 化 (既定: <repo>/.ai-ratchet-gate/baseline.txt)
@@ -87,8 +105,12 @@ deny 時のエラー文には修復手順が同梱されます:
 ## テスト
 
 ```bash
-python -m pytest -q   # 12 tests
+python -m pip install -e ".[test]"
+python scripts/verify.py
 ```
+
+検証はこの入口へ統一しています。選択したPythonにtest依存がない場合は、別環境へ暗黙に
+フォールバックせず、同じPythonへインストールするためのコマンドを表示して停止します。
 
 ## Repo Preflight
 

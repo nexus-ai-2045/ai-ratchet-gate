@@ -11,7 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from ai_ratchet_gate import (  # noqa: E402
     diff_against_baseline,
@@ -20,6 +21,33 @@ from ai_ratchet_gate import (  # noqa: E402
     main,
     parse_baseline,
 )
+
+
+def test_package_exposes_version() -> None:
+    import ai_ratchet_gate
+
+    assert ai_ratchet_gate.__version__ == "0.1.0"
+
+
+def test_legacy_script_ignores_unrelated_src_package(tmp_path: Path) -> None:
+    unrelated_src = tmp_path / "src"
+    unrelated_src.mkdir()
+    (unrelated_src / "__init__.py").write_text("", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(tmp_path)
+
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "ai_ratchet_gate.py"), "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "tracked∧ignored" in completed.stdout
 
 
 def _git_env() -> dict[str, str]:
