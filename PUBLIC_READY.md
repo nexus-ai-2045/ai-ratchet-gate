@@ -11,6 +11,8 @@
 - 現在の公開範囲: `PRIVATE`
 - 想定公開名義: `nexus-ai-2045`
 - 想定初回バージョン: `0.1.0`
+- 採用ライセンス: MIT
+- 採用配布先: GitHub ReleaseとPyPIの両方
 
 この準備文書を含むcommitは、上記HEADの検査結果へ文書を追加する後続commitとして扱います。
 public化またはreleaseの直前に、最終HEADを対象として全項目を再検査します。
@@ -28,13 +30,15 @@ public化またはreleaseの直前に、最終HEADを対象として全項目を
 - remote owner、操作アカウント、実効commit名義は`nexus-ai-2045`で一致した
 - リポジトリはPRIVATEであり、公開操作は行っていない
 
+## 方針決定済み
+
+- MIT Licenseで公開する
+- GitHub ReleaseとPyPIの両方を使う
+
 ## 公開前に人間判断が必要
 
-- オープンソースライセンスを選ぶ。現在のLICENSEはAll Rights Reservedのため、そのまま公開配布しない
-- PyPIへ公開するか、GitHub Releaseだけにするか、両方にするかを選ぶ
 - `ai-ratchet-gate`という配布名の利用可否と所有権を公開先で確認する
 - 公開される全ファイルとcommit履歴を最終目視する
-- `Private :: Do Not Upload`を外す最終差分を確認する
 - public化、tag、GitHub Release、パッケージ送信をそれぞれ明示承認する
 
 ## 公開直前の機械検査
