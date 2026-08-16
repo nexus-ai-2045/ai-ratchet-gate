@@ -27,14 +27,16 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
 1. 最終HEADを再検査し、release commitを人間レビューする
 2. privateの場合だけ、Web全体へ見える内容を提示してpublic化の明示承認を得る。既にpublicなら
    visibility、README、LICENSE、SECURITY.md、履歴をWebから再確認する
-3. 署名対象を確認して`v<version>` tagを作成し、pushを別承認する
-4. 同じtagからwheelとsource distributionを再生成してhashを照合する
-5. draftのtitle、本文、全添付物、hashを提示し、remote作成とuploadの明示承認を得る
-6. 承認された内容でGitHub Releaseをdraft作成し、添付物とhashを読み戻す
+3. 署名対象を確認して`v<version>` tagをローカルに作成する。この時点ではpushしない
+4. ローカルtagからwheelとsource distributionを再生成し、検査、隔離install、hash照合を行う
+5. tag名、commit SHA、draftのtitle、本文、全添付物、hashを提示し、tag push、remote draft作成、
+   uploadの明示承認を得る
+6. 承認されたtagをpushし、承認された内容でGitHub Releaseをdraft作成して、添付物とhashを読み戻す
 7. draftの最終内容を人間レビューし、別の明示承認後に公開する。公開前はREADMEのinstall URLを
    未公開versionへ切り替えない
 8. 公開したGitHub Releaseを読み戻し、添付物のhash照合とインストールsmoke testを実施する
-9. 公開確認後、必要ならREADMEのinstall URLを新versionへ切り替える別PRを作成する
+9. 公開確認後、必要ならREADMEのinstall URLを新versionへ切り替える差分をローカルで作成する。
+   差分を提示し、branch pushと別PR作成の明示承認を得てから外部へ反映する
 
 ## ロールバックと制約
 
