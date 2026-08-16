@@ -27,7 +27,7 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
 1. 最終HEADを再検査し、release commitを人間レビューする
 2. リポジトリのpublic化について、Web全体へ見える内容を提示して明示承認を得る
 3. public化後にvisibility、README、LICENSE、履歴をWebから読み戻す
-4. 署名対象を確認して`v0.1.0` tagを作成し、pushを別承認する
+4. 署名対象を確認して`v<version>` tagを作成し、pushを別承認する
 5. 同じtagからwheelとsource distributionを再生成してhashを照合する
 6. GitHub Releaseのtitle、本文、添付物を提示し、作成を別承認する
 7. GitHub Releaseを読み戻し、添付物のhash照合とインストールsmoke testを実施する

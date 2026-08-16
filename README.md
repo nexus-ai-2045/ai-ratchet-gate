@@ -65,8 +65,8 @@ AIには、導入先の現状確認、baselineの作成、commit前の検査へ�
 以後のcommit前に検査を実行するよう接続してください。具体的なオプションはコマンドの
 ヘルプで確認できます。
 
-GitHub Release版は、release assetを直接指定してインストールします。v0.1.0の場合は
-`python -m pip install https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.0/ai_ratchet_gate-0.1.0-py3-none-any.whl`
+GitHub Release版は、release assetを直接指定してインストールします。v0.1.1の場合は
+`python -m pip install https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl`
 です。PyPIには公開しないため、`pip install ai-ratchet-gate`は実行しないでください。同名を
 第三者が取得した場合、無関係なパッケージをインストールする危険があります。
 
