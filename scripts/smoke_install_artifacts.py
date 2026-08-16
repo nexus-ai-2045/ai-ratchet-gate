@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -23,13 +24,20 @@ def smoke_install(artifact: Path) -> None:
         environment = Path(temp)
         venv.EnvBuilder(with_pip=True).create(environment)
         python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        clean_env = os.environ.copy()
+        clean_env.pop("PYTHONHOME", None)
+        clean_env.pop("PYTHONPATH", None)
         subprocess.run(
-            [str(python), "-m", "pip", "install", "--no-deps", str(artifact)],
+            [str(python), "-I", "-m", "pip", "install", "--no-deps", str(artifact)],
             check=True,
+            cwd=environment,
+            env=clean_env,
         )
         subprocess.run(
-            [str(python), "-m", "ai_ratchet_gate", "--help"],
+            [str(python), "-I", "-m", "ai_ratchet_gate", "--help"],
             check=True,
+            cwd=environment,
+            env=clean_env,
         )
 
 
