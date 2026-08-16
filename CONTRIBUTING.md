@@ -1,6 +1,6 @@
 # コントリビューション
 
-このリポジトリはprivate運用です。変更は専用branchで行い、Pull Requestでレビューします。
+公開範囲にかかわらず、変更は専用branchで行い、Pull Requestでレビューします。
 
 ## 変更手順
 
