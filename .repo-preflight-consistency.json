@@ -12,17 +12,17 @@
     ]
   },
   "readme_contracts": {
-    "required_paths": ["ai_ratchet_gate.py"],
+    "required_paths": ["ai_ratchet_gate.py", "pyproject.toml", "src/ai_ratchet_gate/cli.py"],
     "commands": [
       {
         "text": "python ai_ratchet_gate.py --repo .",
-        "paths": ["ai_ratchet_gate.py"]
+        "paths": ["ai_ratchet_gate.py", "src/ai_ratchet_gate/cli.py"]
       }
     ]
   },
   "impact_map": [
     {
-      "change": ["ai_ratchet_gate.py"],
+      "change": ["ai_ratchet_gate.py", "src/ai_ratchet_gate/**", "pyproject.toml", "scripts/verify.py"],
       "requires_any": ["tests/**"]
     },
     {
