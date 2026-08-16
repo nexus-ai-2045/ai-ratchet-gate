@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,14 +26,19 @@ def test_smoke_install_isolated_from_checkout(
     monkeypatch.setattr(
         SMOKE.subprocess,
         "run",
-        lambda command, **kwargs: calls.append((command, kwargs)),
+        lambda command, **kwargs: (
+            calls.append((command, kwargs))
+            or SimpleNamespace(stdout="tracked∧ignored")
+        ),
     )
 
     SMOKE.smoke_install(artifact)
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     for command, kwargs in calls:
-        assert "-I" in command
         assert kwargs["cwd"] != ROOT
         assert "PYTHONPATH" not in kwargs["env"]
         assert "PYTHONHOME" not in kwargs["env"]
+    assert "-I" in calls[0][0]
+    assert "-I" in calls[1][0]
+    assert calls[2][0][-1] == "--help"

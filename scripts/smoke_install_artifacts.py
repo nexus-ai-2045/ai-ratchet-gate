@@ -27,6 +27,7 @@ def smoke_install(artifact: Path) -> None:
         clean_env = os.environ.copy()
         clean_env.pop("PYTHONHOME", None)
         clean_env.pop("PYTHONPATH", None)
+        clean_env["PYTHONUTF8"] = "1"
         subprocess.run(
             [str(python), "-I", "-m", "pip", "install", "--no-deps", str(artifact)],
             check=True,
@@ -39,6 +40,30 @@ def smoke_install(artifact: Path) -> None:
             cwd=environment,
             env=clean_env,
         )
+        command = environment / (
+            "Scripts/ai-ratchet-gate.exe"
+            if sys.platform == "win32"
+            else "bin/ai-ratchet-gate"
+        )
+        completed = subprocess.run(
+            [str(command), "--help"],
+            check=True,
+            cwd=environment,
+            env=clean_env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if "tracked∧ignored" not in completed.stdout:
+            raise ValueError("console commandのhelp出力が不正です")
+
+
+def verify_wheel_record(wheel: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="ai-ratchet-gate-unpack-") as temp:
+        subprocess.run(
+            [sys.executable, "-m", "wheel", "unpack", str(wheel), "-d", temp],
+            check=True,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         wheel = select_one(args.dist_dir, "*.whl")
         sdist = select_one(args.dist_dir, "*.tar.gz")
+        verify_wheel_record(wheel)
         for artifact in (wheel, sdist):
             smoke_install(artifact)
             print(f"OK install: {artifact.name}")

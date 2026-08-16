@@ -23,6 +23,13 @@ def metadata_bytes(
     private_classifier: bool = True,
     version: str = "0.1.0",
     requires_python: str = ">=3.11",
+    dependencies: tuple[str, ...] = (),
+    optional_requires_dist: tuple[str, ...] = (
+        'pytest<9,>=8; extra == "test"',
+        'build<2,>=1.2; extra == "release"',
+        'packaging<27,>=24; extra == "release"',
+        'wheel<1,>=0.45; extra == "release"',
+    ),
 ) -> bytes:
     metadata = email.message.Message()
     metadata["Name"] = "ai-ratchet-gate"
@@ -30,6 +37,10 @@ def metadata_bytes(
     metadata["License-Expression"] = "MIT"
     metadata["License-File"] = "LICENSE"
     metadata["Requires-Python"] = requires_python
+    for requirement in optional_requires_dist:
+        metadata["Requires-Dist"] = requirement
+    for dependency in dependencies:
+        metadata["Requires-Dist"] = dependency
     if private_classifier:
         metadata["Classifier"] = CHECK.PRIVATE_CLASSIFIER
     return metadata.as_bytes()
@@ -46,6 +57,13 @@ def write_wheel(
     include_entry_point: bool = True,
     include_license: bool = True,
     requires_python: str = ">=3.11",
+    dependencies: tuple[str, ...] = (),
+    optional_requires_dist: tuple[str, ...] = (
+        'pytest<9,>=8; extra == "test"',
+        'build<2,>=1.2; extra == "release"',
+        'packaging<27,>=24; extra == "release"',
+        'wheel<1,>=0.45; extra == "release"',
+    ),
     extra_file: str | None = None,
     incomplete_record: bool = False,
 ) -> None:
@@ -56,6 +74,8 @@ def write_wheel(
     members[metadata_file] = metadata_bytes(
         private_classifier=private_classifier,
         requires_python=requires_python,
+        dependencies=dependencies,
+        optional_requires_dist=optional_requires_dist,
     )
     wheel_file = f"{dist_info}WHEEL"
     record_file = f"{dist_info}RECORD"
@@ -66,7 +86,7 @@ def write_wheel(
             "[console_scripts]\nai-ratchet-gate = ai_ratchet_gate.cli:main\n"
         )
     if include_license:
-        members[f"{dist_info}licenses/LICENSE"] = "MIT"
+        members[f"{dist_info}licenses/LICENSE"] = (ROOT / "LICENSE").read_bytes()
     members[f"{dist_info}top_level.txt"] = "ai_ratchet_gate\n"
     if extra_file is not None:
         members[extra_file] = "unexpected"
@@ -88,15 +108,25 @@ def write_wheel(
 
 
 def write_sdist(
-    path: Path, *, version: str = "0.1.0", omit: str | None = None
+    path: Path,
+    *,
+    version: str = "0.1.0",
+    omit: str | None = None,
+    extra_file: str | None = None,
+    license_data: bytes | None = None,
 ) -> None:
     with tarfile.open(path, "w:gz") as archive:
         files = {
-            **{suffix: b"test" for suffix in CHECK.REQUIRED_SDIST_SUFFIXES},
+            **{suffix: b"test" for suffix in CHECK.ALLOWED_SDIST_SUFFIXES},
             "PKG-INFO": metadata_bytes(version=version),
         }
+        files["LICENSE"] = (
+            (ROOT / "LICENSE").read_bytes() if license_data is None else license_data
+        )
         if omit is not None:
             files.pop(omit)
+        if extra_file is not None:
+            files[extra_file] = b"unexpected"
         for suffix, data in files.items():
             info = tarfile.TarInfo(f"ai_ratchet_gate-0.1.0/{suffix}")
             info.size = len(data)
@@ -246,5 +276,86 @@ def test_release_artifacts_reject_unexpected_wheel_files(tmp_path: Path) -> None
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel, extra_file="sitecustomize.py")
     write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_reject_unexpected_sdist_files(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist, extra_file="src/unrelated/__init__.py")
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_validate_license_contents(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist, license_data=b"wrong")
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_reject_undeclared_dependencies(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, dependencies=("unexpected-package",))
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_reject_changed_dependency_markers(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(
+        wheel,
+        optional_requires_dist=(
+            'pytest<9,>=8; python_version < "3.12"',
+            'build<2,>=1.2; extra == "release"',
+            'packaging<27,>=24; extra == "release"',
+            'wheel<1,>=0.45; extra == "release"',
+        ),
+    )
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_dependency_signature_combines_optional_markers() -> None:
+    _, _, marker = CHECK.dependency_signature(
+        'demo>=1; python_version < "3.12"', "test"
+    )
+
+    assert 'python_version < "3.12"' in marker
+    assert 'extra == "test"' in marker
+
+
+def test_release_artifacts_reject_sdist_links(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist)
+    with tarfile.open(sdist, "r:gz") as source, tarfile.open(
+        tmp_path / "linked.tar.gz", "w:gz"
+    ) as target:
+        for member in source.getmembers():
+            target.addfile(member, source.extractfile(member))
+        link = tarfile.TarInfo("ai_ratchet_gate-0.1.0/unexpected-link")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "LICENSE"
+        target.addfile(link)
+    (tmp_path / "linked.tar.gz").replace(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_report_missing_sdist_license(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist, omit="LICENSE")
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1

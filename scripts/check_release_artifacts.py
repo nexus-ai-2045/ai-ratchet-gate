@@ -16,6 +16,10 @@ import tomllib
 import zipfile
 from pathlib import Path
 
+from packaging.markers import Marker
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_CLASSIFIER = "Private :: Do Not Upload"
@@ -24,7 +28,13 @@ REQUIRED_WHEEL_SUFFIXES = (
     "ai_ratchet_gate/__main__.py",
     "ai_ratchet_gate/cli.py",
 )
-REQUIRED_SDIST_SUFFIXES = (
+ALLOWED_SDIST_SUFFIXES = (
+    ".ai-ratchet-gate/baseline.txt",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "MANIFEST.in",
+    "OPERATIONS.md",
+    "PREFLIGHT.md",
     "pyproject.toml",
     "README.md",
     "LICENSE",
@@ -34,21 +44,54 @@ REQUIRED_SDIST_SUFFIXES = (
     "docs/release.md",
     "docs/threat-model.md",
     "scripts/verify.py",
+    "scripts/check_release_artifacts.py",
+    "scripts/smoke_install_artifacts.py",
+    "src/ai_ratchet_gate/__init__.py",
+    "src/ai_ratchet_gate/__main__.py",
     "src/ai_ratchet_gate/cli.py",
+    "src/ai_ratchet_gate.egg-info/PKG-INFO",
+    "src/ai_ratchet_gate.egg-info/SOURCES.txt",
+    "src/ai_ratchet_gate.egg-info/dependency_links.txt",
+    "src/ai_ratchet_gate.egg-info/entry_points.txt",
+    "src/ai_ratchet_gate.egg-info/requires.txt",
+    "src/ai_ratchet_gate.egg-info/top_level.txt",
+    "tests/test_ai_ratchet_gate.py",
+    "tests/test_package_metadata.py",
+    "tests/test_release_artifacts.py",
+    "tests/test_smoke_install_artifacts.py",
+    "ai_ratchet_gate.py",
+    "setup.cfg",
 )
 
 
-def project_metadata() -> tuple[str, str, str, str, str]:
+def dependency_signature(requirement: str, extra: str = "") -> tuple[str, tuple[str, ...], str]:
+    parsed = Requirement(requirement)
+    marker = parsed.marker
+    if extra:
+        extra_marker = Marker(f'extra == "{extra}"')
+        marker = Marker(f"({marker}) and ({extra_marker})") if marker else extra_marker
+    return (
+        canonicalize_name(parsed.name),
+        tuple(sorted(str(item) for item in parsed.specifier)),
+        str(marker) if marker is not None else "",
+    )
+
+
+def project_metadata() -> tuple[str, str, str, str, str, tuple[tuple[str, tuple[str, ...], str], ...]]:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
         "project"
     ]
     command, target = next(iter(project["scripts"].items()))
+    dependencies = [dependency_signature(item) for item in project.get("dependencies", [])]
+    for extra, requirements in project.get("optional-dependencies", {}).items():
+        dependencies.extend(dependency_signature(item, extra) for item in requirements)
     return (
         project["name"],
         project["version"],
         project["requires-python"],
         command,
         target,
+        tuple(sorted(dependencies)),
     )
 
 
@@ -77,6 +120,7 @@ def validate_metadata(
     expected_name: str,
     expected_version: str,
     expected_requires_python: str,
+    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
 ) -> None:
     metadata = email.message_from_bytes(raw_metadata)
     if metadata["Name"] != expected_name:
@@ -91,6 +135,11 @@ def validate_metadata(
         )
     if "LICENSE" not in metadata.get_all("License-File", []):
         raise ValueError("metadataにLicense-File: LICENSEがありません")
+    actual_dependencies = tuple(
+        sorted(dependency_signature(item) for item in metadata.get_all("Requires-Dist", []))
+    )
+    if actual_dependencies != expected_dependencies:
+        raise ValueError("Requires-Distがpyproject.tomlと一致しません")
     if PRIVATE_CLASSIFIER not in metadata.get_all("Classifier", []):
         raise ValueError("PyPIへの誤送信を拒否するclassifierがありません")
 
@@ -102,6 +151,7 @@ def validate_wheel(
     expected_requires_python: str,
     expected_command: str,
     expected_target: str,
+    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
 ) -> None:
     expected_filename = (
         f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}-py3-none-any.whl"
@@ -143,7 +193,10 @@ def validate_wheel(
             expected_name,
             expected_version,
             expected_requires_python,
+            expected_dependencies,
         )
+        if archive.read(license_file) != (ROOT / "LICENSE").read_bytes():
+            raise ValueError("wheelのLICENSE本文がrepo正本と一致しません")
         entry_points = configparser.ConfigParser(interpolation=None)
         entry_points.read_string(archive.read(entry_points_file).decode("utf-8"))
         if entry_points.get("console_scripts", expected_command, fallback=None) != expected_target:
@@ -180,9 +233,18 @@ def validate_sdist(
     expected_name: str,
     expected_version: str,
     expected_requires_python: str,
+    expected_dependencies: tuple[tuple[str, tuple[str, ...], str], ...],
 ) -> None:
     with tarfile.open(path, "r:gz") as archive:
-        files = {member.name: member for member in archive.getmembers() if member.isfile()}
+        members = archive.getmembers()
+        invalid_members = [
+            member.name for member in members if not member.isfile() and not member.isdir()
+        ]
+        if invalid_members:
+            raise ValueError(
+                f"sdistに通常ファイル以外があります: {', '.join(invalid_members)}"
+            )
+        files = {member.name: member for member in members if member.isfile()}
         names = set(files)
         metadata_files = [
             name
@@ -195,10 +257,32 @@ def validate_sdist(
         if stream is None:
             raise ValueError("sdistのPKG-INFOを読み込めません")
         validate_metadata(
-            stream.read(), expected_name, expected_version, expected_requires_python
+            stream.read(),
+            expected_name,
+            expected_version,
+            expected_requires_python,
+            expected_dependencies,
         )
-    root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
-    require_exact_names(names, tuple(f"{root}/{name}" for name in REQUIRED_SDIST_SUFFIXES))
+        root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
+        license_member = files.get(f"{root}/LICENSE")
+        if license_member is None:
+            raise ValueError("sdistにLICENSEがありません")
+        license_stream = archive.extractfile(license_member)
+        if license_stream is None:
+            raise ValueError("sdistのLICENSEを読み込めません")
+        license_data = license_stream.read()
+    allowed_names = {f"{root}/{name}" for name in ALLOWED_SDIST_SUFFIXES} | {
+        metadata_files[0]
+    }
+    unexpected = sorted(names - allowed_names)
+    missing = sorted(allowed_names - names)
+    if unexpected or missing:
+        raise ValueError(
+            "sdist内容がallowlistと一致しません: "
+            f"unexpected={','.join(unexpected)} missing={','.join(missing)}"
+        )
+    if license_data != (ROOT / "LICENSE").read_bytes():
+        raise ValueError("sdistのLICENSE本文がrepo正本と一致しません")
 
 
 def select_one(dist_dir: Path, pattern: str) -> Path:
@@ -214,11 +298,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        name, version, requires_python, command, target = project_metadata()
+        name, version, requires_python, command, target, dependencies = project_metadata()
         wheel = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}-*.whl")
         sdist = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}.tar.gz")
-        validate_wheel(wheel, name, version, requires_python, command, target)
-        validate_sdist(sdist, name, version, requires_python)
+        validate_wheel(
+            wheel, name, version, requires_python, command, target, dependencies
+        )
+        validate_sdist(sdist, name, version, requires_python, dependencies)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"ERROR [release-artifacts]: {error}")
         return 1
