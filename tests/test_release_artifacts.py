@@ -16,6 +16,17 @@ SPEC = importlib.util.spec_from_file_location("check_release_artifacts", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 CHECK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECK)
+REAL_PROJECT_METADATA = CHECK.project_metadata
+
+
+def fixture_project_metadata():
+    """Artifact validation fixtures intentionally remain on version 0.1.0."""
+    metadata = list(REAL_PROJECT_METADATA())
+    metadata[1] = "0.1.0"
+    return tuple(metadata)
+
+
+CHECK.project_metadata = fixture_project_metadata
 
 
 def metadata_bytes(

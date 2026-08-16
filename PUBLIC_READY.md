@@ -17,6 +17,12 @@
 2026-08-17に最終HEADを再検査し、リポジトリをpublic化した後、同じHEADへ`v0.1.0`を付与して
 GitHub Releaseを公開しました。PyPIへの送信は行っていません。
 
+## v0.1.1訂正リリース
+
+`v0.1.0`の配布物内に公開前のPRIVATE／公開未承認表記が残ったため、履歴や既存assetを
+差し替えず、文書訂正版を`v0.1.1`とします。機能変更はありません。各versionのtagと
+Releaseは、fresh build・検査・人間レビューを経て公開します。
+
 ## 確認済み
 
 - README、SECURITY.md、CONTRIBUTING.md、PREFLIGHT.mdが存在する
