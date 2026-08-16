@@ -26,7 +26,7 @@ from ai_ratchet_gate import (  # noqa: E402
 def test_package_exposes_version() -> None:
     import ai_ratchet_gate
 
-    assert ai_ratchet_gate.__version__ == "0.1.0"
+    assert ai_ratchet_gate.__version__ == "0.1.1"
 
 
 def test_legacy_script_ignores_unrelated_src_package(tmp_path: Path) -> None:
