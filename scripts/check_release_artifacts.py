@@ -94,7 +94,9 @@ def project_metadata() -> tuple[
         "project"
     ]
     command, target = next(iter(project["scripts"].items()))
-    dependencies = [dependency_signature(item) for item in project.get("dependencies", [])]
+    dependencies = [
+        dependency_signature(item) for item in project.get("dependencies", [])
+    ]
     optional_dependencies = project.get("optional-dependencies", {})
     for extra, requirements in optional_dependencies.items():
         dependencies.extend(dependency_signature(item, extra) for item in requirements)
@@ -109,12 +111,8 @@ def project_metadata() -> tuple[
     )
 
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def require_exact_names(names: set[str], required_names: tuple[str, ...]) -> None:
@@ -145,20 +143,24 @@ def validate_metadata(
     if metadata["Version"] != expected_version:
         raise ValueError(f"versionが不一致です: {metadata['Version']}")
     if metadata["License-Expression"] != "MIT":
-        raise ValueError(f"licenseがMITではありません: {metadata['License-Expression']}")
-    if metadata["Requires-Python"] != expected_requires_python:
         raise ValueError(
-            f"Requires-Pythonが不一致です: {metadata['Requires-Python']}"
+            f"licenseがMITではありません: {metadata['License-Expression']}"
         )
+    if metadata["Requires-Python"] != expected_requires_python:
+        raise ValueError(f"Requires-Pythonが不一致です: {metadata['Requires-Python']}")
     if "LICENSE" not in metadata.get_all("License-File", []):
         raise ValueError("metadataにLicense-File: LICENSEがありません")
     actual_dependencies = tuple(
-        sorted(dependency_signature(item) for item in metadata.get_all("Requires-Dist", []))
+        sorted(
+            dependency_signature(item) for item in metadata.get_all("Requires-Dist", [])
+        )
     )
     if actual_dependencies != expected_dependencies:
         raise ValueError("Requires-Distがpyproject.tomlと一致しません")
     actual_extras = tuple(
-        sorted(canonicalize_name(item) for item in metadata.get_all("Provides-Extra", []))
+        sorted(
+            canonicalize_name(item) for item in metadata.get_all("Provides-Extra", [])
+        )
     )
     if actual_extras != expected_extras:
         raise ValueError("Provides-Extraがpyproject.tomlと一致しません")
@@ -177,15 +179,21 @@ def validate_wheel(
         tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...
     ],
     expected_extras: tuple[str, ...],
+    artifact_data: bytes | None = None,
 ) -> None:
     expected_filename = (
         f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}-py3-none-any.whl"
     )
     if path.name != expected_filename:
         raise ValueError(f"wheelファイル名が不正です: {path.name}")
-    with zipfile.ZipFile(path) as archive:
+    source: Path | io.BytesIO = (
+        path if artifact_data is None else io.BytesIO(artifact_data)
+    )
+    with zipfile.ZipFile(source) as archive:
         names = set(archive.namelist())
-        metadata_files = [name for name in names if name.endswith(".dist-info/METADATA")]
+        metadata_files = [
+            name for name in names if name.endswith(".dist-info/METADATA")
+        ]
         if len(metadata_files) != 1:
             raise ValueError("wheelのMETADATAが一意ではありません")
         dist_info = metadata_files[0].removesuffix("METADATA")
@@ -199,8 +207,12 @@ def validate_wheel(
         entry_points_file = f"{dist_info}entry_points.txt"
         license_file = f"{dist_info}licenses/LICENSE"
         top_level_file = f"{dist_info}top_level.txt"
-        if not {wheel_file, record_file, entry_points_file, license_file}.issubset(names):
-            raise ValueError("wheelの制御ファイル、entry point、またはLICENSEがありません")
+        if not {wheel_file, record_file, entry_points_file, license_file}.issubset(
+            names
+        ):
+            raise ValueError(
+                "wheelの制御ファイル、entry point、またはLICENSEがありません"
+            )
         allowed_names = set(REQUIRED_WHEEL_SUFFIXES) | {
             metadata_files[0],
             wheel_file,
@@ -211,7 +223,9 @@ def validate_wheel(
         }
         unexpected = sorted(names - allowed_names)
         if unexpected:
-            raise ValueError(f"wheelに未許可ファイルがあります: {', '.join(unexpected)}")
+            raise ValueError(
+                f"wheelに未許可ファイルがあります: {', '.join(unexpected)}"
+            )
         for module_name in REQUIRED_WHEEL_SUFFIXES:
             source = ROOT / "src" / module_name
             if archive.read(module_name) != source.read_bytes():
@@ -256,7 +270,9 @@ def validate_wheel(
             if len(row) != 3 or not row[1].startswith("sha256=") or not row[2]:
                 raise ValueError(f"RECORDのhashまたはsizeがありません: {name}")
             data = archive.read(name)
-            digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
+            digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(
+                b"="
+            )
             if row[1] != f"sha256={digest.decode('ascii')}" or row[2] != str(len(data)):
                 raise ValueError(f"RECORDのhashまたはsizeが不一致です: {name}")
     require_exact_names(names, REQUIRED_WHEEL_SUFFIXES)
@@ -271,11 +287,27 @@ def validate_sdist(
         tuple[str, tuple[str, ...], tuple[str, ...], str, str], ...
     ],
     expected_extras: tuple[str, ...],
+    artifact_data: bytes | None = None,
 ) -> None:
-    with tarfile.open(path, "r:gz") as archive:
+    root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
+    source = None if artifact_data is None else io.BytesIO(artifact_data)
+    with tarfile.open(
+        path if source is None else None, "r:gz", fileobj=source
+    ) as archive:
         members = archive.getmembers()
+        outside_root = [
+            member.name
+            for member in members
+            if member.name != root and not member.name.startswith(f"{root}/")
+        ]
+        if outside_root:
+            raise ValueError(
+                f"sdistに期待するroot外のmemberがあります: {', '.join(outside_root)}"
+            )
         invalid_members = [
-            member.name for member in members if not member.isfile() and not member.isdir()
+            member.name
+            for member in members
+            if not member.isfile() and not member.isdir()
         ]
         if invalid_members:
             raise ValueError(
@@ -301,7 +333,6 @@ def validate_sdist(
             expected_dependencies,
             expected_extras,
         )
-        root = f"{re.sub(r'[-_.]+', '_', expected_name)}-{expected_version}"
         license_member = files.get(f"{root}/LICENSE")
         if license_member is None:
             raise ValueError("sdistにLICENSEがありません")
@@ -362,16 +393,34 @@ def main(argv: list[str] | None = None) -> int:
         ) = project_metadata()
         wheel = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}-*.whl")
         sdist = select_one(args.dist_dir, f"{name.replace('-', '_')}-{version}.tar.gz")
+        wheel_data = wheel.read_bytes()
+        sdist_data = sdist.read_bytes()
         validate_wheel(
-            wheel, name, version, requires_python, command, target, dependencies, extras
+            wheel,
+            name,
+            version,
+            requires_python,
+            command,
+            target,
+            dependencies,
+            extras,
+            artifact_data=wheel_data,
         )
-        validate_sdist(sdist, name, version, requires_python, dependencies, extras)
+        validate_sdist(
+            sdist,
+            name,
+            version,
+            requires_python,
+            dependencies,
+            extras,
+            artifact_data=sdist_data,
+        )
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"ERROR [release-artifacts]: {error}")
         return 1
 
-    for path in (wheel, sdist):
-        print(f"OK {path.name} sha256={sha256(path)}")
+    for path, data in ((wheel, wheel_data), (sdist, sdist_data)):
+        print(f"OK {path.name} sha256={sha256(data)}")
     print("==> release artifacts OK (外部送信なし)")
     return 0
 

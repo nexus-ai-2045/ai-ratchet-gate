@@ -109,11 +109,16 @@ def write_wheel(
         if include_controls:
             recorded = list(members.items())
             if incomplete_record:
-                recorded = [(metadata_file, members[metadata_file]), (wheel_file, members[wheel_file])]
+                recorded = [
+                    (metadata_file, members[metadata_file]),
+                    (wheel_file, members[wheel_file]),
+                ]
             rows = []
             for name, data in recorded:
                 raw = data if isinstance(data, bytes) else data.encode("utf-8")
-                digest = base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=")
+                digest = base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(
+                    b"="
+                )
                 rows.append(f"{name},sha256={digest.decode('ascii')},{len(raw)}")
             rows.append(f"{record_file},,")
             archive.writestr(record_file, "\n".join(rows) + "\n")
@@ -233,9 +238,10 @@ def test_release_artifacts_require_sdist_files_at_root(tmp_path: Path) -> None:
     write_wheel(wheel)
     write_sdist(sdist)
 
-    with tarfile.open(sdist, "r:gz") as source, tarfile.open(
-        tmp_path / "nested.tar.gz", "w:gz"
-    ) as target:
+    with (
+        tarfile.open(sdist, "r:gz") as source,
+        tarfile.open(tmp_path / "nested.tar.gz", "w:gz") as target,
+    ):
         for member in source.getmembers():
             data = source.extractfile(member)
             if member.name.endswith("/pyproject.toml"):
@@ -344,6 +350,47 @@ def test_release_artifacts_reject_unexpected_sdist_files(tmp_path: Path) -> None
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
 
 
+def test_release_artifacts_reject_sdist_members_outside_root(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(sdist)
+    with (
+        tarfile.open(sdist, "r:gz") as source,
+        tarfile.open(tmp_path / "outside-root.tar.gz", "w:gz") as target,
+    ):
+        for member in source.getmembers():
+            target.addfile(member, source.extractfile(member))
+        target.addfile(tarfile.TarInfo("unrelated/"))
+    (tmp_path / "outside-root.tar.gz").replace(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifact_hash_uses_the_validated_snapshot(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    original_wheel = b"reviewed wheel bytes"
+    wheel.write_bytes(original_wheel)
+    sdist.write_bytes(b"reviewed sdist bytes")
+
+    def replace_after_snapshot(
+        path: Path, *args, artifact_data: bytes | None = None
+    ) -> None:
+        assert artifact_data == original_wheel
+        path.write_bytes(b"replacement bytes")
+
+    monkeypatch.setattr(CHECK, "validate_wheel", replace_after_snapshot)
+    monkeypatch.setattr(CHECK, "validate_sdist", lambda *args, **kwargs: None)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 0
+    output = capsys.readouterr().out
+    assert f"sha256={hashlib.sha256(original_wheel).hexdigest()}" in output
+    assert hashlib.sha256(b"replacement bytes").hexdigest() not in output
+
+
 def test_release_artifacts_validate_license_contents(tmp_path: Path) -> None:
     wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
@@ -435,9 +482,10 @@ def test_release_artifacts_reject_sdist_links(tmp_path: Path) -> None:
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel)
     write_sdist(sdist)
-    with tarfile.open(sdist, "r:gz") as source, tarfile.open(
-        tmp_path / "linked.tar.gz", "w:gz"
-    ) as target:
+    with (
+        tarfile.open(sdist, "r:gz") as source,
+        tarfile.open(tmp_path / "linked.tar.gz", "w:gz") as target,
+    ):
         for member in source.getmembers():
             target.addfile(member, source.extractfile(member))
         link = tarfile.TarInfo("ai_ratchet_gate-0.1.0/unexpected-link")

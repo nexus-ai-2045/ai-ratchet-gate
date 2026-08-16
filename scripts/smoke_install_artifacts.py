@@ -23,13 +23,28 @@ def smoke_install(artifact: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="ai-ratchet-gate-install-") as temp:
         environment = Path(temp)
         venv.EnvBuilder(with_pip=True).create(environment)
-        python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
-        clean_env = os.environ.copy()
+        python = environment / (
+            "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+        )
+        clean_env = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.upper().startswith("PIP_")
+        }
         clean_env.pop("PYTHONHOME", None)
         clean_env.pop("PYTHONPATH", None)
         clean_env["PYTHONUTF8"] = "1"
         subprocess.run(
-            [str(python), "-I", "-m", "pip", "install", "--no-deps", str(artifact)],
+            [
+                str(python),
+                "-I",
+                "-m",
+                "pip",
+                "--isolated",
+                "install",
+                "--no-deps",
+                str(artifact),
+            ],
             check=True,
             cwd=environment,
             env=clean_env,
