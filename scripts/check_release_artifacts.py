@@ -199,8 +199,10 @@ def validate_wheel(
             raise ValueError("wheelのLICENSE本文がrepo正本と一致しません")
         entry_points = configparser.ConfigParser(interpolation=None)
         entry_points.read_string(archive.read(entry_points_file).decode("utf-8"))
-        if entry_points.get("console_scripts", expected_command, fallback=None) != expected_target:
-            raise ValueError(f"console entry pointが不一致です: {expected_command}")
+        if entry_points.sections() != ["console_scripts"] or dict(
+            entry_points.items("console_scripts")
+        ) != {expected_command: expected_target}:
+            raise ValueError("console entry pointがpyproject.tomlと一致しません")
         wheel_metadata = email.message_from_bytes(archive.read(wheel_file))
         wheel_version = wheel_metadata["Wheel-Version"]
         if not wheel_version:

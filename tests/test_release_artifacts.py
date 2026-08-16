@@ -64,6 +64,7 @@ def write_wheel(
         'packaging<27,>=24; extra == "release"',
         'wheel<1,>=0.45; extra == "release"',
     ),
+    extra_entry_point: str | None = None,
     extra_file: str | None = None,
     incomplete_record: bool = False,
 ) -> None:
@@ -82,9 +83,10 @@ def write_wheel(
     if include_controls:
         members[wheel_file] = f"Wheel-Version: {wheel_version}\nTag: py3-none-any\n"
     if include_entry_point:
-        members[f"{dist_info}entry_points.txt"] = (
-            "[console_scripts]\nai-ratchet-gate = ai_ratchet_gate.cli:main\n"
-        )
+        entry_points = "[console_scripts]\nai-ratchet-gate = ai_ratchet_gate.cli:main\n"
+        if extra_entry_point is not None:
+            entry_points += f"{extra_entry_point}\n"
+        members[f"{dist_info}entry_points.txt"] = entry_points
     if include_license:
         members[f"{dist_info}licenses/LICENSE"] = (ROOT / "LICENSE").read_bytes()
     members[f"{dist_info}top_level.txt"] = "ai_ratchet_gate\n"
@@ -230,6 +232,15 @@ def test_release_artifacts_require_console_entry_point(tmp_path: Path) -> None:
     wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
     write_wheel(wheel, include_entry_point=False)
+    write_sdist(sdist)
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_reject_extra_console_entry_points(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel, extra_entry_point="pip = ai_ratchet_gate.cli:main")
     write_sdist(sdist)
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
