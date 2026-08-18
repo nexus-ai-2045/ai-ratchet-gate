@@ -28,6 +28,11 @@ REQUIRED_WHEEL_SUFFIXES = (
     "ai_ratchet_gate/__main__.py",
     "ai_ratchet_gate/cli.py",
 )
+REQUIRED_SDIST_MATCH_SUFFIXES = (
+    "CHANGELOG.md",
+    "ROADMAP.md",
+    "scripts/check_release_changelog.py",
+)
 ALLOWED_SDIST_SUFFIXES = (
     ".ai-ratchet-gate/baseline.txt",
     "CHANGELOG.md",
@@ -37,6 +42,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "PREFLIGHT.md",
     "pyproject.toml",
     "README.md",
+    "ROADMAP.md",
     "LICENSE",
     "SECURITY.md",
     "PUBLIC_READY.md",
@@ -45,6 +51,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "docs/threat-model.md",
     "scripts/verify.py",
     "scripts/check_release_artifacts.py",
+    "scripts/check_release_changelog.py",
     "scripts/smoke_install_artifacts.py",
     "src/ai_ratchet_gate/__init__.py",
     "src/ai_ratchet_gate/__main__.py",
@@ -58,6 +65,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "tests/test_ai_ratchet_gate.py",
     "tests/test_package_metadata.py",
     "tests/test_release_artifacts.py",
+    "tests/test_release_changelog.py",
     "tests/test_smoke_install_artifacts.py",
     "ai_ratchet_gate.py",
     "setup.cfg",
@@ -350,6 +358,14 @@ def validate_sdist(
             if source_stream is None:
                 raise ValueError(f"sdistの実行コードを読み込めません: {source_name}")
             source_data[source_name] = source_stream.read()
+        for source_name in REQUIRED_SDIST_MATCH_SUFFIXES:
+            source_member = files.get(f"{root}/{source_name}")
+            if source_member is None:
+                raise ValueError(f"sdistに検査対象文書がありません: {source_name}")
+            source_stream = archive.extractfile(source_member)
+            if source_stream is None:
+                raise ValueError(f"sdistの検査対象文書を読めません: {source_name}")
+            source_data[source_name] = source_stream.read()
     allowed_names = {f"{root}/{name}" for name in ALLOWED_SDIST_SUFFIXES} | {
         metadata_files[0]
     }
@@ -364,9 +380,7 @@ def validate_sdist(
         raise ValueError("sdistのLICENSE本文がrepo正本と一致しません")
     for source_name, data in source_data.items():
         if data != (ROOT / source_name).read_bytes():
-            raise ValueError(
-                f"sdistの実行コードがrepo正本と一致しません: {source_name}"
-            )
+            raise ValueError(f"sdist内容がrepo正本と一致しません: {source_name}")
 
 
 def select_one(dist_dir: Path, pattern: str) -> Path:
