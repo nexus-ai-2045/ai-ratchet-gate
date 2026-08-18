@@ -26,9 +26,9 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
 
 1. `CHANGELOG.md`の先頭に空の`## [Unreleased]`を残し、直後を
    `## [<version>] - YYYY-MM-DD`としてrelease PRを人間レビューする
-2. release PRをmergeした当日に、GitHub Actionsの`Release preflight`へversionを入力する。
-   preflightはJST（UTC+09:00）の実行日とCHANGELOGの日付を照合し、read-only権限でテスト、build、
-   artifact検査、hash記録まで行う。tagやReleaseは作らない
+2. GitHub Actionsの`Release preflight`へversionを入力する。preflightはリポジトリ内のversionと
+   CHANGELOGの構文・versionを照合し、read-only権限でテスト、build、artifact検査、hash記録まで
+   行う。日付、公開タイミング、tag、Draft、人間承認は判定せず、tagやReleaseも作らない
 3. 最終HEAD、preflight結果、CI、reviewが一致していることを再確認する
 4. privateの場合だけ、Web全体へ見える内容を提示してpublic化の明示承認を得る。既にpublicなら
    visibility、README、LICENSE、SECURITY.md、履歴をWebから再確認する
@@ -44,6 +44,9 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
    差分を提示し、branch pushと別PR作成の明示承認を得てから外部へ反映する
 
 ## ロールバックと制約
+
+当日公開の判断、tagとDraftの対象SHA・asset hash照合、人間承認、公開実行、公開台帳は、
+リポジトリ内preflightの責務ではなく外部のrelease運用で扱います。
 
 GitHub Releaseの削除やtagの付け直しを通常の修正手段にせず、問題がある場合は修正版を新しい
 versionで配布して変更履歴を残します。public化後にPRIVATEへ戻しても、既に取得された履歴や

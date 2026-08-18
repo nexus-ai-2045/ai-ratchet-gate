@@ -32,7 +32,6 @@ jobs:
         run: >-
           python scripts/check_release_changelog.py
           --version "$RELEASE_VERSION"
-          --require-current-date
           --require-clean-unreleased
 
       - name: Run tests

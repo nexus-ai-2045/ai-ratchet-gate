@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -29,7 +28,6 @@ def test_accepts_release_candidate() -> None:
     CHECK.validate_changelog(
         changelog(),
         expected_version="0.1.1",
-        expected_date="2026-08-19",
         require_clean_unreleased=True,
     )
 
@@ -51,29 +49,11 @@ def test_rejects_invalid_release_state(text: str, message: str) -> None:
         )
 
 
-def test_rejects_version_or_date_mismatch() -> None:
+def test_rejects_version_mismatch() -> None:
     with pytest.raises(ValueError, match="versionが不一致"):
         CHECK.validate_changelog(changelog(), expected_version="0.1.2")
-    with pytest.raises(ValueError, match="release日が不一致"):
-        CHECK.validate_changelog(
-            changelog(), expected_version="0.1.1", expected_date="2026-08-20"
-        )
 
 
 def test_rejects_requested_version_that_differs_from_package() -> None:
     with pytest.raises(ValueError, match="pyproject.tomlと不一致"):
         CHECK.validate_requested_version("0.1.2", "0.1.1")
-
-
-def test_current_release_date_uses_jst(monkeypatch) -> None:
-    real_datetime = CHECK.datetime
-
-    class FixedDateTime:
-        @staticmethod
-        def now(zone):
-            assert zone.utcoffset(None) == timedelta(hours=9)
-            return real_datetime(2026, 8, 19, 12, 0, tzinfo=zone)
-
-    monkeypatch.setattr(CHECK, "datetime", FixedDateTime)
-
-    assert CHECK.current_release_date() == "2026-08-19"
