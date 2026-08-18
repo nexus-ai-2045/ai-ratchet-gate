@@ -30,6 +30,7 @@ REQUIRED_WHEEL_SUFFIXES = (
 )
 REQUIRED_SDIST_MATCH_SUFFIXES = (
     "CHANGELOG.md",
+    "ROADMAP.md",
     "scripts/check_release_changelog.py",
 )
 ALLOWED_SDIST_SUFFIXES = (
@@ -41,6 +42,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "PREFLIGHT.md",
     "pyproject.toml",
     "README.md",
+    "ROADMAP.md",
     "LICENSE",
     "SECURITY.md",
     "PUBLIC_READY.md",
