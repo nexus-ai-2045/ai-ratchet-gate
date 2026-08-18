@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """ソースcheckoutからの従来実行とimportを維持する互換ラッパー。"""
 
-import importlib.util
+import importlib
 from pathlib import Path
 
-_CLI_PATH = Path(__file__).resolve().parent / "src" / "ai_ratchet_gate" / "cli.py"
-_SPEC = importlib.util.spec_from_file_location("_ai_ratchet_gate_cli", _CLI_PATH)
-if _SPEC is None or _SPEC.loader is None:  # pragma: no cover - import機構の異常
-    raise ImportError(f"実装を読み込めません: {_CLI_PATH}")
-_CLI = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_CLI)
+# checkout直下の同名ファイルとしてimportされた場合もpackage submoduleを解決する。
+# 外部cwdの無関係な ``src`` は参照せず、このファイルに隣接する正本へ固定する。
+_PACKAGE_PATH = Path(__file__).resolve().parent / "src" / "ai_ratchet_gate"
+__path__ = [str(_PACKAGE_PATH)]
+_CLI = importlib.import_module("ai_ratchet_gate.cli")
 
 __all__ = [
     "BASELINE_HEADER",
