@@ -31,7 +31,6 @@ jobs:
           python scripts/check_release_changelog.py
           --version "${{ inputs.version }}"
           --require-current-date
-          --timezone Asia/Tokyo
           --require-clean-unreleased
 
       - name: Run tests
