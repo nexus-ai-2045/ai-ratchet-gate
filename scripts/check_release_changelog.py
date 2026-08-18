@@ -6,12 +6,12 @@ from __future__ import annotations
 import argparse
 import re
 import tomllib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 ROOT = Path(__file__).resolve().parents[1]
+JST = timezone(timedelta(hours=9), name="Asia/Tokyo")
 HEADING = re.compile(r"^## (?P<label>.+)$", re.MULTILINE)
 RELEASE_HEADING = re.compile(
     r"^\[(?P<version>\d+\.\d+\.\d+)\] - (?P<release_date>\d{4}-\d{2}-\d{2})$"
@@ -32,12 +32,9 @@ def validate_requested_version(requested: str, actual: str) -> None:
         )
 
 
-def current_date(timezone: str) -> str:
-    try:
-        zone = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError as error:
-        raise ValueError(f"timezoneが不正です: {timezone}") from error
-    return datetime.now(zone).date().isoformat()
+def current_release_date() -> str:
+    """IANA timezone databaseに依存せず、JSTの現在日を返す。"""
+    return datetime.now(JST).date().isoformat()
 
 
 def validate_changelog(
@@ -83,13 +80,12 @@ def main(argv: list[str] | None = None) -> int:
     date_group = parser.add_mutually_exclusive_group()
     date_group.add_argument("--release-date")
     date_group.add_argument("--require-current-date", action="store_true")
-    parser.add_argument("--timezone", default="Asia/Tokyo")
     parser.add_argument("--require-clean-unreleased", action="store_true")
     args = parser.parse_args(argv)
     try:
         validate_requested_version(args.version, actual_version)
         expected_date = (
-            current_date(args.timezone)
+            current_release_date()
             if args.require_current_date
             else args.release_date
         )
