@@ -26,8 +26,9 @@ CIでも実際に配布物をbuildし、`scripts/smoke_install_artifacts.py`がw
 
 1. `CHANGELOG.md`の先頭に空の`## [Unreleased]`を残し、直後を
    `## [<version>] - YYYY-MM-DD`としてrelease PRを人間レビューする
-2. release PRをmergeした当日に、GitHub Actionsの`Release preflight`へversionと日付を入力する。
-   preflightはread-only権限でテスト、build、artifact検査、hash記録まで行い、tagやReleaseは作らない
+2. release PRをmergeした当日に、GitHub Actionsの`Release preflight`へversionを入力する。
+   preflightは`Asia/Tokyo`の実行日とCHANGELOGの日付を照合し、read-only権限でテスト、build、
+   artifact検査、hash記録まで行う。tagやReleaseは作らない
 3. 最終HEAD、preflight結果、CI、reviewが一致していることを再確認する
 4. privateの場合だけ、Web全体へ見える内容を提示してpublic化の明示承認を得る。既にpublicなら
    visibility、README、LICENSE、SECURITY.md、履歴をWebから再確認する

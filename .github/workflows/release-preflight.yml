@@ -7,10 +7,6 @@ on:
         description: pyproject.tomlとCHANGELOGに記録したversion
         required: true
         type: string
-      release_date:
-        description: CHANGELOGに記録したrelease日（YYYY-MM-DD）
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -34,7 +30,8 @@ jobs:
         run: >-
           python scripts/check_release_changelog.py
           --version "${{ inputs.version }}"
-          --release-date "${{ inputs.release_date }}"
+          --require-current-date
+          --timezone Asia/Tokyo
           --require-clean-unreleased
 
       - name: Run tests
