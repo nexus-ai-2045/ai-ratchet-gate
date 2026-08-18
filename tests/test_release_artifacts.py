@@ -158,6 +158,10 @@ def write_sdist(
             files[source_name] = source_overrides.get(
                 source_name, (ROOT / source_name).read_bytes()
             )
+        for source_name in CHECK.REQUIRED_SDIST_MATCH_SUFFIXES:
+            files[source_name] = source_overrides.get(
+                source_name, (ROOT / source_name).read_bytes()
+            )
         files["LICENSE"] = (
             (ROOT / "LICENSE").read_bytes() if license_data is None else license_data
         )
@@ -347,6 +351,30 @@ def test_release_artifacts_match_reviewed_sdist_source(tmp_path: Path) -> None:
     write_sdist(
         sdist,
         source_overrides={"src/ai_ratchet_gate/cli.py": b"def main(): return 0\n"},
+    )
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_match_reviewed_changelog(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(
+        sdist,
+        source_overrides={"CHANGELOG.md": b"stale release state\n"},
+    )
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_release_artifacts_match_reviewed_roadmap(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(
+        sdist,
+        source_overrides={"ROADMAP.md": b"stale roadmap\n"},
     )
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
