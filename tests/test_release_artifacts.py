@@ -368,6 +368,18 @@ def test_release_artifacts_match_reviewed_changelog(tmp_path: Path) -> None:
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
 
 
+def test_release_artifacts_match_reviewed_roadmap(tmp_path: Path) -> None:
+    wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
+    sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
+    write_wheel(wheel)
+    write_sdist(
+        sdist,
+        source_overrides={"ROADMAP.md": b"stale roadmap\n"},
+    )
+
+    assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
 def test_release_artifacts_reject_unexpected_sdist_files(tmp_path: Path) -> None:
     wheel = tmp_path / "ai_ratchet_gate-0.1.0-py3-none-any.whl"
     sdist = tmp_path / "ai_ratchet_gate-0.1.0.tar.gz"
