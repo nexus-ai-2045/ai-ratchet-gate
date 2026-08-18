@@ -7,6 +7,10 @@ import importlib.util
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
@@ -22,6 +26,13 @@ def main() -> int:
         return 2
 
     print(f"==> 検証Python: {sys.executable}")
+    changelog = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_release_changelog.py")],
+        check=False,
+    )
+    if changelog.returncode != 0:
+        return changelog.returncode
+
     with tempfile.TemporaryDirectory(prefix="ai-ratchet-gate-pytest-") as basetemp:
         tests = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "--basetemp", basetemp],
