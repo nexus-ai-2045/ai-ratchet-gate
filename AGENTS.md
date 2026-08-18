@@ -2,13 +2,15 @@
 
 ## Scope
 
-この repository は、git の状態矛盾 (tracked∧ignored) の増分検査を扱う。
+このrepositoryは、agent非依存の汎用非回帰engineとbuilt-in adapterを扱う。
+Gitの状態矛盾（tracked∧ignored）は最初のadapterであり、既存CLI互換を維持する。
 
 ## Safety boundaries
 
-- 既定動作は read-only、fail-closed とする。書き込みは `--update-baseline` の baseline 1 ファイルのみ
+- 既定動作はread-only、fail-closedとする。書き込みはlegacy `--update-baseline`と明示したreceiptだけ
 - 対象 repo のファイルを自動修復しない (`git rm --cached` 等は人間へ案内するだけ)
 - baseline の更新は必ず diff としてレビュー可能な形で行う。skip 系の迂回を既定にしない
+- baseline拡大、waiver承認、rule昇格は人間レビューなしに自動化しない
 - remote 作成、push、公開、外部送信は別承認とする。既定 visibility は private
 
 ## Verification

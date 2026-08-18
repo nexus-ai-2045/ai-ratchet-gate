@@ -27,8 +27,14 @@ Memory管理、skill生成、エージェント実行、品質全般の評価は
 - baseline形式をversion管理し、未知の形式はfail-closedにする
 - アダプターごとの結果を機械可読なreceiptとして出力する
 - 現在のGit検査を共通契約上の参照アダプターへ移行する
+- legacy CLIと`baseline.txt`をcharacterization testで固定し、新契約をopt-in導入する
+- baselineと期限付きwaiverを分離する
+- 複数adapterを総合点へ潰さず、軸ごとにallow / deny / indeterminateを返す
 
 完了条件は、既存CLIとの互換性を保ち、同じ入力から同じ判定を再現できることです。
+
+実装順は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)に従い、まずschemaと純関数、次に
+既存Git検査のadapter化、receipt、waiver検証を進めます。
 
 ## Phase 2: AI運用向け参照アダプター
 
@@ -42,6 +48,8 @@ Memory管理、skill生成、エージェント実行、品質全般の評価は
 
 各アダプターは、対象形式、信頼境界、誤検知時の扱い、baseline更新手順を明示します。
 非決定的な評価値は、再現性と許容幅を定義できるまでdeny判定へ使いません。
+第二adapterの第一候補は、入力と期待値を決定論的に固定しやすいskill provenance、digest、
+tool権限拡大の検査です。secretやPIIを含み得るmemory検査は、証拠漏洩と誤検知の設計後に扱います。
 
 ## Phase 3: エージェント横断の接続
 
@@ -49,6 +57,10 @@ Memory管理、skill生成、エージェント実行、品質全般の評価は
 - Codex、Hermes Agentなど特定製品に依存しないファイル／CLI契約を維持する
 - 外部ツールが生成したmemoryやskillsも、明示された対象だけread-onlyで検査する
 - 複数アダプターのreceiptを統合し、どの不変条件が停止理由か追跡可能にする
+- commit、PR、merge、release等の境界で再観測するreceding-horizon型PDCAを運用する
+
+自動化はscan、decision、receipt、修復案、baseline縮小候補までとします。baseline拡大、waiver承認、
+enforce昇格、merge、release、公開、外部送信は人間停止線です。
 
 ## v1.0の判断基準
 

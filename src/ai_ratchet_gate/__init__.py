@@ -1,4 +1,8 @@
-"""trackedかつignoredなGit矛盾の増分を止めるラチェット型ゲート。"""
+"""人間確認済みfailureを実行可能な非回帰guardへ変える汎用gate。"""
+
+from .engine import evaluate
+from .model import Decision, Finding, Observation, RatchetError
+from .receipt import build_receipt
 
 from .cli import (
     BASELINE_HEADER,
@@ -20,6 +24,12 @@ __all__ = [
     "list_tracked_ignored",
     "main",
     "parse_baseline",
+    "Decision",
+    "Finding",
+    "Observation",
+    "RatchetError",
+    "build_receipt",
+    "evaluate",
 ]
 
 __version__ = "0.1.1"

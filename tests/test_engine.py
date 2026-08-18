@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from ai_ratchet_gate.engine import evaluate
+from ai_ratchet_gate.model import Finding, Observation, RatchetError
+from ai_ratchet_gate.receipt import build_receipt
+from ai_ratchet_gate.adapters import ScanContext, TrackedIgnoredAdapter
+
+
+def finding(subject: str, *, message: str = "説明") -> Finding:
+    return Finding.create(
+        adapter_id="example.guard",
+        adapter_version="1",
+        rule_id="no-regression",
+        subject_kind="artifact",
+        subject_key=subject,
+        message=message,
+        evidence_sha256="a" * 64,
+    )
+
+
+def test_finding_id_is_stable_across_display_text_changes() -> None:
+    assert finding("a", message="old").finding_id == finding(
+        "a", message="new"
+    ).finding_id
+    assert finding("a").finding_id != finding("b").finding_id
+
+
+def test_ratchet_partitions_findings_and_blocks_only_new() -> None:
+    accepted = finding("accepted")
+    new = finding("new")
+    resolved = finding("resolved")
+    decision = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [new, accepted]),
+        baseline_ids=[accepted.finding_id, resolved.finding_id],
+        mode="ratchet",
+        policy="new_only",
+    )
+    assert decision.status == "deny"
+    assert decision.accepted == (accepted.finding_id,)
+    assert decision.new == (new.finding_id,)
+    assert decision.resolved == (resolved.finding_id,)
+
+
+def test_exact_baseline_blocks_stale_baseline_but_new_only_allows_it() -> None:
+    old = finding("old")
+    observation = Observation.create("example.guard", "1", "repo:abc", [])
+    assert evaluate(
+        observation, [old.finding_id], mode="ratchet", policy="new_only"
+    ).status == "allow"
+    assert evaluate(
+        observation, [old.finding_id], mode="ratchet", policy="exact_baseline"
+    ).status == "deny"
+
+
+def test_duplicate_finding_id_is_rejected() -> None:
+    duplicate = finding("same")
+    with pytest.raises(RatchetError, match="duplicate_finding_id"):
+        Observation.create("example.guard", "1", "repo:abc", [duplicate, duplicate])
+
+
+def test_receipt_is_canonical_and_order_independent() -> None:
+    first, second = finding("a"), finding("b")
+    baseline = ["f" * 64]
+    one = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [first, second]),
+        baseline,
+        mode="observe",
+    )
+    two = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [second, first]),
+        baseline,
+        mode="observe",
+    )
+    assert build_receipt(one) == build_receipt(two)
+    assert json.loads(build_receipt(one))["receipt_sha256"]
+
+
+@pytest.mark.parametrize("value", ["../secret", "/absolute", "a\x00b"])
+def test_subject_key_rejects_ambiguous_or_unsafe_values(value: str) -> None:
+    with pytest.raises(RatchetError, match="invalid_subject_key"):
+        finding(value)
+
+
+def test_subject_key_preserves_posix_backslash_filename() -> None:
+    assert finding(r"a\b.log").subject_key == r"a\b.log"
+
+
+def test_unknown_mode_and_policy_fail_closed() -> None:
+    observation = Observation.create("example.guard", "1", "repo:abc", [])
+    with pytest.raises(RatchetError, match="invalid_mode"):
+        evaluate(observation, [], mode="magic")
+    with pytest.raises(RatchetError, match="invalid_policy"):
+        evaluate(observation, [], mode="ratchet", policy="magic")
+
+
+def test_builtin_git_adapter_produces_stable_findings(tmp_path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "-f", ".gitignore", "generated.txt"], cwd=tmp_path, check=True)
+    adapter = TrackedIgnoredAdapter()
+    first = adapter.observe(ScanContext(tmp_path, "repo:test"))
+    second = adapter.observe(ScanContext(tmp_path, "repo:test"))
+    assert first == second
+    assert first.findings[0].subject_key == "generated.txt"
