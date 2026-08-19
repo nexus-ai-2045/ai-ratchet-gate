@@ -9,6 +9,9 @@ from pathlib import Path
 _PACKAGE_PATH = Path(__file__).resolve().parent / "src" / "ai_ratchet_gate"
 __path__ = [str(_PACKAGE_PATH)]
 _CLI = importlib.import_module("ai_ratchet_gate.cli")
+_MODEL = importlib.import_module("ai_ratchet_gate.model")
+_ENGINE = importlib.import_module("ai_ratchet_gate.engine")
+_RECEIPT = importlib.import_module("ai_ratchet_gate.receipt")
 
 __all__ = [
     "BASELINE_HEADER",
@@ -19,8 +22,19 @@ __all__ = [
     "list_tracked_ignored",
     "main",
     "parse_baseline",
+    "Decision",
+    "Finding",
+    "Observation",
+    "RatchetError",
+    "build_receipt",
+    "evaluate",
 ]
-globals().update({name: getattr(_CLI, name) for name in __all__})
+globals().update({name: getattr(_CLI, name) for name in __all__ if hasattr(_CLI, name)})
+globals().update(
+    {name: getattr(_MODEL, name) for name in ("Decision", "Finding", "Observation", "RatchetError")}
+)
+build_receipt = _RECEIPT.build_receipt
+evaluate = _ENGINE.evaluate
 
 __version__ = "0.1.1"
 

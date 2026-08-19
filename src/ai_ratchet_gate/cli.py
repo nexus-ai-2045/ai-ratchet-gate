@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -87,9 +88,17 @@ def _exact_keys(value: object, keys: set[str]) -> bool:
 
 def _read_json(path: Path) -> object:
     try:
-        if path.stat().st_size > MAX_JSON_BYTES:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise RatchetError("json_input_not_regular_file")
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                raw = stream.read(MAX_JSON_BYTES + 1)
+        finally:
+            os.close(descriptor)
+        if len(raw) > MAX_JSON_BYTES:
             raise RatchetError("json_input_too_large")
-        return json.loads(path.read_bytes().decode("utf-8"))
+        return json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise RatchetError("invalid_json_input") from error
 
@@ -126,12 +135,16 @@ def _evaluate_main(argv: list[str]) -> int:
             raise RatchetError("subject_identity_mismatch")
         if not _exact_keys(
             raw_baseline,
-            {"schema", "adapter_id", "adapter_version", "policy", "finding_ids"},
+            {
+                "schema", "adapter_id", "adapter_version", "subject", "policy",
+                "finding_ids",
+            },
         ) or raw_baseline["schema"] != "ai-ratchet-gate.baseline/v1":
             raise RatchetError("invalid_baseline_schema")
         if (
             raw_baseline["adapter_id"] != observation.adapter_id
             or raw_baseline["adapter_version"] != observation.adapter_version
+            or raw_baseline["subject"] != observation.subject
             or not isinstance(raw_baseline["finding_ids"], list)
         ):
             raise RatchetError("baseline_identity_mismatch")

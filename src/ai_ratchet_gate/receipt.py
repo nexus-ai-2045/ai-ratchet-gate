@@ -13,7 +13,14 @@ def _canonical(value: object) -> str:
 
 
 def build_receipt(decision: Decision) -> str:
-    observation = {
+    complete_observation = {
+        "schema": "ai-ratchet-gate.observation/v1",
+        "adapter_id": decision.observation.adapter_id,
+        "adapter_version": decision.observation.adapter_version,
+        "subject": decision.observation.subject,
+        "findings": [item.to_dict() for item in decision.observation.findings],
+    }
+    public_observation = {
         "adapter_id": decision.observation.adapter_id,
         "adapter_version": decision.observation.adapter_version,
         "subject": decision.observation.subject,
@@ -30,12 +37,16 @@ def build_receipt(decision: Decision) -> str:
         "schema": "ai-ratchet-gate.baseline/v1",
         "adapter_id": decision.observation.adapter_id,
         "adapter_version": decision.observation.adapter_version,
+        "subject": decision.observation.subject,
         "policy": decision.policy,
         "finding_ids": list(decision.baseline_ids),
     }
     body: dict[str, object] = {
         "schema": "ai-ratchet-gate.receipt/v1",
-        "observation_sha256": hashlib.sha256(_canonical(observation).encode()).hexdigest(),
+        "observation_sha256": hashlib.sha256(
+            _canonical(complete_observation).encode()
+        ).hexdigest(),
+        "observation": public_observation,
         "baseline_sha256": hashlib.sha256(
             _canonical(baseline_document).encode()
         ).hexdigest(),

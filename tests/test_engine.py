@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -79,6 +80,22 @@ def test_receipt_is_canonical_and_order_independent() -> None:
     assert json.loads(build_receipt(one))["receipt_sha256"]
 
 
+def test_receipt_hash_binds_message_without_echoing_it() -> None:
+    secret = "github_pat_" + "R" * 30
+    old = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [finding("a", message=secret)]),
+        [], mode="observe",
+    )
+    new = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [finding("a", message="changed")]),
+        [], mode="observe",
+    )
+    assert json.loads(build_receipt(old))["observation_sha256"] != json.loads(
+        build_receipt(new)
+    )["observation_sha256"]
+    assert secret not in build_receipt(old)
+
+
 @pytest.mark.parametrize("value", ["../secret", "/absolute", "a\x00b"])
 def test_subject_key_rejects_ambiguous_or_unsafe_values(value: str) -> None:
     with pytest.raises(RatchetError, match="invalid_subject_key"):
@@ -95,16 +112,25 @@ def test_unknown_mode_and_policy_fail_closed() -> None:
         evaluate(observation, [], mode="magic")
     with pytest.raises(RatchetError, match="invalid_policy"):
         evaluate(observation, [], mode="ratchet", policy="magic")
+    with pytest.raises(RatchetError, match="invalid_baseline_ids"):
+        evaluate(observation, ["a" * 64, 1], mode="ratchet")
 
 
-def test_builtin_git_adapter_produces_stable_findings(tmp_path) -> None:
+def test_builtin_git_adapter_produces_stable_findings(tmp_path, monkeypatch) -> None:
     import subprocess
 
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    git_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    git_env["GIT_CONFIG_GLOBAL"] = os.devnull
+    git_env["GIT_CONFIG_SYSTEM"] = os.devnull
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
     (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
     (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
-    subprocess.run(["git", "add", "-f", ".gitignore", "generated.txt"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=tmp_path, check=True, env=git_env,
+    )
     adapter = TrackedIgnoredAdapter()
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "does-not-exist"))
     first = adapter.observe(ScanContext(tmp_path, "repo:test"))
     second = adapter.observe(ScanContext(tmp_path, "repo:test"))
     assert first == second
