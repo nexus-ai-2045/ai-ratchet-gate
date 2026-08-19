@@ -19,11 +19,14 @@ def evaluate(
         raise RatchetError("invalid_mode")
     if policy not in {"new_only", "exact_baseline"}:
         raise RatchetError("invalid_policy")
-    baseline = tuple(sorted(baseline_ids))
-    if len(baseline) != len(set(baseline)) or any(
+    raw_baseline = tuple(baseline_ids)
+    if any(
         type(item) is not str or re.fullmatch(r"[0-9a-f]{64}", item) is None
-        for item in baseline
+        for item in raw_baseline
     ):
+        raise RatchetError("invalid_baseline_ids")
+    baseline = tuple(sorted(raw_baseline))
+    if len(baseline) != len(set(baseline)):
         raise RatchetError("invalid_baseline_ids")
     current = {item.finding_id for item in observation.findings}
     known = set(baseline)

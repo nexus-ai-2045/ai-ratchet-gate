@@ -38,6 +38,7 @@ def test_evaluate_cli_writes_receipt_and_denies_new_finding(tmp_path: Path) -> N
                 "schema": "ai-ratchet-gate.baseline/v1",
                 "adapter_id": "example.guard",
                 "adapter_version": "1",
+                "subject": "repo:abc",
                 "policy": "new_only",
                 "finding_ids": [],
             }
@@ -93,6 +94,7 @@ def test_receipt_does_not_echo_untrusted_message(tmp_path: Path, capsys) -> None
     baseline.write_text(json.dumps({
         "schema": "ai-ratchet-gate.baseline/v1", "adapter_id": "example.guard",
         "adapter_version": "1", "policy": "new_only", "finding_ids": [],
+        "subject": "repo:abc",
     }), encoding="utf-8")
     assert main(["evaluate", "--observation", str(observation), "--baseline", str(baseline),
                  "--expected-subject", "repo:abc"]) == 1
@@ -109,6 +111,30 @@ def test_evaluate_cli_rejects_subject_replay(tmp_path: Path) -> None:
     baseline.write_text(json.dumps({
         "schema": "ai-ratchet-gate.baseline/v1", "adapter_id": "example.guard",
         "adapter_version": "1", "policy": "new_only", "finding_ids": [],
+        "subject": "repo:old",
     }), encoding="utf-8")
     assert main(["evaluate", "--observation", str(observation), "--baseline", str(baseline),
                  "--expected-subject", "repo:new"]) == 2
+
+
+def test_evaluate_cli_rejects_baseline_from_another_subject(tmp_path: Path) -> None:
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    observation.write_text(json.dumps({
+        "schema": "ai-ratchet-gate.observation/v1", "adapter_id": "example.guard",
+        "adapter_version": "1", "subject": "repo:new", "findings": [],
+    }), encoding="utf-8")
+    baseline.write_text(json.dumps({
+        "schema": "ai-ratchet-gate.baseline/v1", "adapter_id": "example.guard",
+        "adapter_version": "1", "subject": "repo:old", "policy": "new_only",
+        "finding_ids": [],
+    }), encoding="utf-8")
+    assert main(["evaluate", "--observation", str(observation), "--baseline", str(baseline),
+                 "--expected-subject", "repo:new"]) == 2
+
+
+def test_checkout_shim_exports_generic_api() -> None:
+    import ai_ratchet_gate
+
+    assert ai_ratchet_gate.Finding is Finding
+    assert callable(ai_ratchet_gate.evaluate)

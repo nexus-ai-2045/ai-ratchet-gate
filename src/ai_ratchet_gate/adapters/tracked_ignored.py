@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 
 from ..model import Finding, Observation, RatchetError
@@ -14,6 +15,11 @@ class TrackedIgnoredAdapter:
     adapter_version = "1"
 
     def observe(self, context: ScanContext) -> Observation:
+        git_env = {
+            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+        }
+        git_env["GIT_CONFIG_GLOBAL"] = os.devnull
+        git_env["GIT_CONFIG_SYSTEM"] = os.devnull
         try:
             completed = subprocess.run(
                 [
@@ -22,6 +28,7 @@ class TrackedIgnoredAdapter:
                 ],
                 capture_output=True,
                 check=True,
+                env=git_env,
             )
             raw = completed.stdout.decode("utf-8", errors="strict")
         except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as error:
