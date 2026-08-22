@@ -25,12 +25,14 @@ def _canonical(value: object) -> bytes:
 
 
 def _nonempty(value: object, name: str) -> str:
-    if (
-        type(value) is not str
-        or not value
-        or "\x00" in value
-        or len(value.encode("utf-8")) > MAX_STRING_BYTES
-    ):
+    if type(value) is not str or not value or "\x00" in value:
+        raise RatchetError(f"invalid_{name}")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        # json.loads は lone surrogate を許容するが、UTF-8 へは落とせない
+        raise RatchetError(f"invalid_{name}") from error
+    if len(encoded) > MAX_STRING_BYTES:
         raise RatchetError(f"invalid_{name}")
     return unicodedata.normalize("NFC", value)
 

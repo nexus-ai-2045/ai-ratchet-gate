@@ -99,8 +99,21 @@ def _read_json(path: Path) -> object:
         if len(raw) > MAX_JSON_BYTES:
             raise RatchetError("json_input_too_large")
         return json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
         raise RatchetError("invalid_json_input") from error
+
+
+def _paths_alias(left: Path, right: Path) -> bool:
+    """symlink / hardlink / 同一inode / resolve一致を含むパス別名を検出する。"""
+    try:
+        if left.exists() and right.exists() and os.path.samefile(left, right):
+            return True
+    except OSError:
+        pass
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
 
 
 def _evaluate_main(argv: list[str]) -> int:
@@ -156,6 +169,10 @@ def _evaluate_main(argv: list[str]) -> int:
         )
         receipt = build_receipt(decision)
         if args.receipt:
+            if _paths_alias(args.receipt, args.observation) or _paths_alias(
+                args.receipt, args.baseline
+            ):
+                raise RatchetError("receipt_path_aliases_input")
             args.receipt.parent.mkdir(parents=True, exist_ok=True)
             args.receipt.write_text(receipt, encoding="utf-8")
         print(receipt, end="")

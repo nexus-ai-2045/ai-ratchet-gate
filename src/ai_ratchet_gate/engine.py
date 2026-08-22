@@ -15,9 +15,9 @@ def evaluate(
     mode: str = "ratchet",
     policy: str = "new_only",
 ) -> Decision:
-    if mode not in {"observe", "ratchet", "strict"}:
+    if type(mode) is not str or mode not in {"observe", "ratchet", "strict"}:
         raise RatchetError("invalid_mode")
-    if policy not in {"new_only", "exact_baseline"}:
+    if type(policy) is not str or policy not in {"new_only", "exact_baseline"}:
         raise RatchetError("invalid_policy")
     raw_baseline = tuple(baseline_ids)
     if any(

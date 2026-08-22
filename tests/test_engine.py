@@ -116,12 +116,37 @@ def test_unknown_mode_and_policy_fail_closed() -> None:
         evaluate(observation, ["a" * 64, 1], mode="ratchet")
 
 
-def test_builtin_git_adapter_produces_stable_findings(tmp_path, monkeypatch) -> None:
-    import subprocess
+@pytest.mark.parametrize("policy", [[], {}, 1, None])
+def test_malformed_policy_type_fails_closed(policy: object) -> None:
+    observation = Observation.create("example.guard", "1", "repo:abc", [])
+    with pytest.raises(RatchetError, match="invalid_policy"):
+        evaluate(observation, [], mode="ratchet", policy=policy)  # type: ignore[arg-type]
 
+
+def test_lone_utf16_surrogate_fails_closed() -> None:
+    with pytest.raises(RatchetError, match="invalid_message"):
+        Finding.create(
+            adapter_id="example.guard",
+            adapter_version="1",
+            rule_id="rule",
+            subject_kind="artifact",
+            subject_key="a",
+            message="\ud800",
+            evidence_sha256="a" * 64,
+        )
+
+
+def _sanitized_git_env() -> dict[str, str]:
     git_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     git_env["GIT_CONFIG_GLOBAL"] = os.devnull
     git_env["GIT_CONFIG_SYSTEM"] = os.devnull
+    return git_env
+
+
+def test_builtin_git_adapter_produces_stable_findings(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    git_env = _sanitized_git_env()
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
     (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
     (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
@@ -135,3 +160,60 @@ def test_builtin_git_adapter_produces_stable_findings(tmp_path, monkeypatch) -> 
     second = adapter.observe(ScanContext(tmp_path, "repo:test"))
     assert first == second
     assert first.findings[0].subject_key == "generated.txt"
+
+
+def test_adapter_disables_repo_fsmonitor_hook(tmp_path) -> None:
+    import subprocess
+
+    git_env = _sanitized_git_env()
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
+    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    hook = tmp_path / "fsmonitor-hook.sh"
+    marker = tmp_path / "fsmonitor-ran"
+    hook.write_text(
+        "#!/bin/sh\necho ran > \"$(dirname \"$0\")/fsmonitor-ran\"\nexit 1\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    subprocess.run(
+        ["git", "config", "core.fsmonitor", str(hook)],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    observation = TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
+    assert observation.findings[0].subject_key == "generated.txt"
+    assert not marker.exists()
+
+
+def test_adapter_ignores_external_excludes_file(tmp_path) -> None:
+    import subprocess
+
+    git_env = _sanitized_git_env()
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
+    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "extra.txt").write_text("y", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt", "extra.txt"],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    external = tmp_path / "external.excludes"
+    external.write_text("extra.txt\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "config", "core.excludesFile", str(external)],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    # 外部 excludesFile が効くと extra.txt も tracked∧ignored になるが、
+    # adapter は固定空 excludesFile で隔離するため generated.txt のみ。
+    with_external = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "-i", "-c", "--exclude-standard", "-z"],
+        capture_output=True, check=True, env=git_env,
+    )
+    assert b"extra.txt" in with_external.stdout
+    observation = TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
+    keys = {item.subject_key for item in observation.findings}
+    assert keys == {"generated.txt"}
