@@ -23,13 +23,20 @@ AI エージェントが並走する repo では、「先に commit されたフ
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
+from .engine import evaluate
+from .model import Finding, Observation, RatchetError
+from .receipt import build_receipt
+
 SKIP_ENV = "AI_RATCHET_GATE_SKIP"
 DEFAULT_BASELINE = ".ai-ratchet-gate/baseline.txt"
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 BASELINE_HEADER = """\
 # ai-ratchet-gate の baseline (ratchet)。
@@ -75,7 +82,110 @@ def diff_against_baseline(
     return sorted(current - baseline), sorted(baseline - current)
 
 
+def _exact_keys(value: object, keys: set[str]) -> bool:
+    return isinstance(value, dict) and set(value) == keys
+
+
+def _read_json(path: Path) -> object:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise RatchetError("json_input_not_regular_file")
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                raw = stream.read(MAX_JSON_BYTES + 1)
+        finally:
+            os.close(descriptor)
+        if len(raw) > MAX_JSON_BYTES:
+            raise RatchetError("json_input_too_large")
+        return json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        raise RatchetError("invalid_json_input") from error
+
+
+def _paths_alias(left: Path, right: Path) -> bool:
+    """symlink / hardlink / 同一inode / resolve一致を含むパス別名を検出する。"""
+    try:
+        if left.exists() and right.exists() and os.path.samefile(left, right):
+            return True
+    except OSError:
+        pass
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
+
+
+def _evaluate_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="汎用findingをbaselineと比較する")
+    parser.add_argument("--observation", required=True, type=Path)
+    parser.add_argument("--baseline", required=True, type=Path)
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument(
+        "--expected-subject",
+        required=True,
+        help="enforcement側が固定した候補identity。observationとの一致を必須化する",
+    )
+    parser.add_argument("--mode", choices=["observe", "ratchet", "strict"])
+    args = parser.parse_args(argv)
+    try:
+        raw_observation = _read_json(args.observation)
+        raw_baseline = _read_json(args.baseline)
+        if not _exact_keys(
+            raw_observation,
+            {"schema", "adapter_id", "adapter_version", "subject", "findings"},
+        ) or raw_observation["schema"] != "ai-ratchet-gate.observation/v1":
+            raise RatchetError("invalid_observation_schema")
+        if not isinstance(raw_observation["findings"], list):
+            raise RatchetError("invalid_observation")
+        observation = Observation.create(
+            raw_observation["adapter_id"],
+            raw_observation["adapter_version"],
+            raw_observation["subject"],
+            [Finding.from_dict(item) for item in raw_observation["findings"]],
+        )
+        if observation.subject != args.expected_subject:
+            raise RatchetError("subject_identity_mismatch")
+        if not _exact_keys(
+            raw_baseline,
+            {
+                "schema", "adapter_id", "adapter_version", "subject", "policy",
+                "finding_ids",
+            },
+        ) or raw_baseline["schema"] != "ai-ratchet-gate.baseline/v1":
+            raise RatchetError("invalid_baseline_schema")
+        if (
+            raw_baseline["adapter_id"] != observation.adapter_id
+            or raw_baseline["adapter_version"] != observation.adapter_version
+            or raw_baseline["subject"] != observation.subject
+            or not isinstance(raw_baseline["finding_ids"], list)
+        ):
+            raise RatchetError("baseline_identity_mismatch")
+        decision = evaluate(
+            observation,
+            raw_baseline["finding_ids"],
+            mode=args.mode or "ratchet",
+            policy=raw_baseline["policy"],
+        )
+        receipt = build_receipt(decision)
+        if args.receipt:
+            if _paths_alias(args.receipt, args.observation) or _paths_alias(
+                args.receipt, args.baseline
+            ):
+                raise RatchetError("receipt_path_aliases_input")
+            args.receipt.parent.mkdir(parents=True, exist_ok=True)
+            args.receipt.write_text(receipt, encoding="utf-8")
+        print(receipt, end="")
+        return 0 if decision.status == "allow" else 1
+    except (RatchetError, OSError) as error:
+        print(json.dumps({"status": "tool_error", "error": str(error)}))
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
+    effective_argv = list(argv) if argv is not None else sys.argv[1:]
+    if effective_argv[:1] == ["evaluate"]:
+        return _evaluate_main(effective_argv[1:])
     parser = argparse.ArgumentParser(
         description="tracked∧ignored の矛盾の増分を deny する ratchet ゲート"
     )
@@ -91,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="baseline を現状へ更新する (grandfather の意図的な増減。diff はレビュー対象)",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
     baseline_path = args.baseline or (args.repo / DEFAULT_BASELINE)
 
     if os.environ.get(SKIP_ENV) == "1":

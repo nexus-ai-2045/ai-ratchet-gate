@@ -4,13 +4,25 @@
 
 ## [Unreleased]
 
+### 追加
+
+- agent非依存のFinding、Observation、Decisionによる汎用ラチェットcore
+- `new_only` / `exact_baseline` policyと`observe` / `ratchet` / `strict` mode
+- 厳格なv1 observation・baseline入力と、入力digestへ束縛した決定論的receipt
+- read-only adapter契約と`git.tracked_ignored`組み込みadapter
+- 汎用engineの責務、人間停止線、先行概念を固定するADRと脅威モデル
+
+### 互換性
+
+- v0.1の引数なしCLI、テキストbaseline、出力、exit codeを維持
+- 新しい汎用判定は`evaluate` subcommandとしてopt-in提供
+
 ## [0.1.1] - 2026-08-19
 
 ### 修正
 
 - 公開済み配布物に残っていたPRIVATE／公開未承認の旧文書を、現在のPUBLIC状態へ訂正
 - GitHub Release限定配布とPyPI非公開の案内を維持
-- 現在の狭い実装と汎用AIラチェット構想を区別し、段階的なロードマップを追加
 
 ## [0.1.0] - 2026-08-17
 
