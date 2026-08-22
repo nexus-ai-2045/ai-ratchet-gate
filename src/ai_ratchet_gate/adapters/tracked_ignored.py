@@ -21,9 +21,13 @@ class TrackedIgnoredAdapter:
         git_env["GIT_CONFIG_GLOBAL"] = os.devnull
         git_env["GIT_CONFIG_SYSTEM"] = os.devnull
         try:
+            # repo-local core.fsmonitor hook を無効化し、外部 excludesFile も固定空に隔離する
             completed = subprocess.run(
                 [
-                    "git", "-C", str(context.root), "ls-files", "-i", "-c",
+                    "git", "-C", str(context.root),
+                    "-c", "core.fsmonitor=false",
+                    "-c", f"core.excludesFile={os.devnull}",
+                    "ls-files", "-i", "-c",
                     "--exclude-standard", "-z",
                 ],
                 capture_output=True,
