@@ -2,7 +2,6 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include OPERATIONS.md
 include PREFLIGHT.md
-include PUBLIC_READY.md
 include ROADMAP.md
 include SECURITY.md
 include ai_ratchet_gate.py
