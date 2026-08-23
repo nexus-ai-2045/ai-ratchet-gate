@@ -217,3 +217,50 @@ def test_adapter_ignores_external_excludes_file(tmp_path) -> None:
     observation = TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
     keys = {item.subject_key for item in observation.findings}
     assert keys == {"generated.txt"}
+
+
+def test_adapter_ignores_info_exclude(tmp_path) -> None:
+    import subprocess
+
+    git_env = _sanitized_git_env()
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
+    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "local-only.txt").write_text("y", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt", "local-only.txt"],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    info_exclude = tmp_path / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text("local-only.txt\n", encoding="utf-8")
+    # --exclude-standard だと clone-local の info/exclude が混入する
+    with_standard = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "-i", "-c", "--exclude-standard", "-z"],
+        capture_output=True, check=True, env=git_env,
+    )
+    assert b"local-only.txt" in with_standard.stdout
+    observation = TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
+    keys = {item.subject_key for item in observation.findings}
+    assert keys == {"generated.txt"}
+
+
+def test_adapter_timeout_on_fifo_gitignore(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    from ai_ratchet_gate.adapters import tracked_ignored as adapter_module
+
+    git_env = _sanitized_git_env()
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=git_env)
+    (tmp_path / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", "generated.txt"],
+        cwd=tmp_path, check=True, env=git_env,
+    )
+    gitignore = tmp_path / ".gitignore"
+    if gitignore.exists() or gitignore.is_symlink():
+        gitignore.unlink()
+    os.mkfifo(gitignore)
+    monkeypatch.setattr(adapter_module, "GIT_LS_FILES_TIMEOUT_SECONDS", 1)
+    with pytest.raises(RatchetError, match="adapter_observation_timeout"):
+        TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))

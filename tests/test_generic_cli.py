@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from ai_ratchet_gate.cli import main
@@ -362,3 +363,205 @@ def test_evaluate_cli_rejects_receipt_hardlink_to_observation(
     ) == 2
     assert "receipt_path_aliases_input" in capsys.readouterr().out
     assert observation.read_text(encoding="utf-8") == before
+
+
+def test_evaluate_cli_accepts_nfd_subject_identities(tmp_path: Path, capsys) -> None:
+    # cafe + combining acute (NFD)。Observation側はNFC化されるため比較側も揃える。
+    nfd_subject = "cafe\u0301"
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    observation.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.observation/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": nfd_subject,
+                "findings": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": nfd_subject,
+                "policy": "new_only",
+                "finding_ids": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            nfd_subject,
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["decision"]["status"] == "allow"
+
+
+def test_evaluate_cli_rejects_duplicate_json_object_keys(
+    tmp_path: Path, capsys
+) -> None:
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    # 先に不正schema、後に正当schema。last-winsだと通過してしまう。
+    observation.write_text(
+        '{"schema":"unknown","schema":"ai-ratchet-gate.observation/v1",'
+        '"adapter_id":"example.guard","adapter_version":"1",'
+        '"subject":"repo:abc","findings":[]}',
+        encoding="utf-8",
+    )
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": "repo:abc",
+                "policy": "new_only",
+                "finding_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            "repo:abc",
+        ]
+    ) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"status": "tool_error", "error": "duplicate_json_object_key"}
+
+
+def test_evaluate_cli_maps_oversized_json_integer_to_tool_error(
+    tmp_path: Path, capsys
+) -> None:
+    import sys
+
+    digits = sys.get_int_max_str_digits() + 10
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    observation.write_text("1" + ("0" * digits), encoding="utf-8")
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": "repo:abc",
+                "policy": "new_only",
+                "finding_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            "repo:abc",
+        ]
+    ) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"status": "tool_error", "error": "invalid_json_input"}
+
+
+def test_evaluate_cli_emits_utf8_receipt_under_ascii_stdout(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class _BytesCollector:
+        def __init__(self) -> None:
+            self.chunks: list[bytes] = []
+
+        def write(self, data: bytes) -> int:
+            self.chunks.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+        def getvalue(self) -> bytes:
+            return b"".join(self.chunks)
+
+    class AsciiStdout:
+        encoding = "ascii"
+
+        def __init__(self) -> None:
+            self.buffer = _BytesCollector()
+
+        def write(self, text: str) -> int:
+            text.encode(self.encoding)
+            raise AssertionError("text write should not be used for non-ascii")
+
+        def flush(self) -> None:
+            return None
+
+    subject = "repo:日本語"
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    observation.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.observation/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": subject,
+                "findings": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "example.guard",
+                "adapter_version": "1",
+                "subject": subject,
+                "policy": "new_only",
+                "finding_ids": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    fake = AsciiStdout()
+    monkeypatch.setattr(sys, "stdout", fake)
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            subject,
+        ]
+    ) == 0
+    payload = json.loads(fake.buffer.getvalue().decode("utf-8"))
+    assert payload["decision"]["status"] == "allow"
+    assert subject in fake.buffer.getvalue().decode("utf-8")

@@ -9,6 +9,9 @@ import subprocess
 from ..model import Finding, Observation, RatchetError
 from .protocol import ScanContext
 
+# FIFO ignore 等で git がブロックしても CI worker を無限待ちさせない
+GIT_LS_FILES_TIMEOUT_SECONDS = 30
+
 
 class TrackedIgnoredAdapter:
     adapter_id = "git.tracked_ignored"
@@ -21,20 +24,25 @@ class TrackedIgnoredAdapter:
         git_env["GIT_CONFIG_GLOBAL"] = os.devnull
         git_env["GIT_CONFIG_SYSTEM"] = os.devnull
         try:
-            # repo-local core.fsmonitor hook を無効化し、外部 excludesFile も固定空に隔離する
+            # repo-local core.fsmonitor hook を無効化し、外部 excludesFile も固定空に隔離する。
+            # --exclude-standard は .git/info/exclude を含むため clone 間で非決定になる。
+            # レビュー対象の .gitignore のみ (--exclude-per-directory) を使う。
             completed = subprocess.run(
                 [
                     "git", "-C", str(context.root),
                     "-c", "core.fsmonitor=false",
                     "-c", f"core.excludesFile={os.devnull}",
                     "ls-files", "-i", "-c",
-                    "--exclude-standard", "-z",
+                    "--exclude-per-directory=.gitignore", "-z",
                 ],
                 capture_output=True,
                 check=True,
                 env=git_env,
+                timeout=GIT_LS_FILES_TIMEOUT_SECONDS,
             )
             raw = completed.stdout.decode("utf-8", errors="strict")
+        except subprocess.TimeoutExpired as error:
+            raise RatchetError("adapter_observation_timeout") from error
         except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as error:
             raise RatchetError("adapter_observation_failed") from error
         paths = sorted(item for item in raw.split("\0") if item)

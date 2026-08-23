@@ -28,6 +28,7 @@ import os
 import stat
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 from .engine import evaluate
@@ -86,6 +87,30 @@ def _exact_keys(value: object, keys: set[str]) -> bool:
     return isinstance(value, dict) and set(value) == keys
 
 
+def _reject_duplicate_object_names(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    """同一object内の重複キーを曖昧なまま受理しない。"""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RatchetError("duplicate_json_object_key")
+        result[key] = value
+    return result
+
+
+def _emit_utf8(text: str) -> None:
+    """locale依存のstdout encodingに依存せずUTF-8で出力する。"""
+    encoded = text.encode("utf-8")
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is not None:
+        buffer.write(encoded)
+        buffer.flush()
+        return
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
 def _read_json(path: Path) -> object:
     try:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
@@ -98,8 +123,20 @@ def _read_json(path: Path) -> object:
             os.close(descriptor)
         if len(raw) > MAX_JSON_BYTES:
             raise RatchetError("json_input_too_large")
-        return json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        # ValueError: 過大桁整数。RecursionError: 深い入れ子。
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object_names,
+        )
+    except RatchetError:
+        raise
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as error:
         raise RatchetError("invalid_json_input") from error
 
 
@@ -144,7 +181,9 @@ def _evaluate_main(argv: list[str]) -> int:
             raw_observation["subject"],
             [Finding.from_dict(item) for item in raw_observation["findings"]],
         )
-        if observation.subject != args.expected_subject:
+        # Observation.create は subject を NFC 化する。比較相手も同じ正規形へ揃える。
+        expected_subject = unicodedata.normalize("NFC", args.expected_subject)
+        if observation.subject != expected_subject:
             raise RatchetError("subject_identity_mismatch")
         if not _exact_keys(
             raw_baseline,
@@ -154,10 +193,13 @@ def _evaluate_main(argv: list[str]) -> int:
             },
         ) or raw_baseline["schema"] != "ai-ratchet-gate.baseline/v1":
             raise RatchetError("invalid_baseline_schema")
+        if type(raw_baseline["subject"]) is not str:
+            raise RatchetError("baseline_identity_mismatch")
+        baseline_subject = unicodedata.normalize("NFC", raw_baseline["subject"])
         if (
             raw_baseline["adapter_id"] != observation.adapter_id
             or raw_baseline["adapter_version"] != observation.adapter_version
-            or raw_baseline["subject"] != observation.subject
+            or baseline_subject != observation.subject
             or not isinstance(raw_baseline["finding_ids"], list)
         ):
             raise RatchetError("baseline_identity_mismatch")
@@ -175,10 +217,11 @@ def _evaluate_main(argv: list[str]) -> int:
                 raise RatchetError("receipt_path_aliases_input")
             args.receipt.parent.mkdir(parents=True, exist_ok=True)
             args.receipt.write_text(receipt, encoding="utf-8")
-        print(receipt, end="")
+        _emit_utf8(receipt)
         return 0 if decision.status == "allow" else 1
     except (RatchetError, OSError) as error:
-        print(json.dumps({"status": "tool_error", "error": str(error)}))
+        _emit_utf8(json.dumps({"status": "tool_error", "error": str(error)}))
+        _emit_utf8("\n")
         return 2
 
 
