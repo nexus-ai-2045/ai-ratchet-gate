@@ -1,16 +1,16 @@
 # ai-ratchet-gate
 
-git の「**tracked なのに gitignore にマッチする**」矛盾の増分を、commit 時に fail-closed で止める
-ratchet 型ゲートです。AI エージェントが並走する repo を主な対象にしています。
+人間が確認した失敗を、agent非依存の実行可能なguardへ変換し、同じ種類の新規悪化を
+fail-closedで止めるratchet型ゲートです。Gitの「trackedなのにignored」は最初の組み込みadapterです。
 
 ## 現在の実装と構想
 
-本ツールはMemory、Skill、エージェントの自己改善機能ではありません。現在のv0.1が実装するのは、
-Gitの`tracked ∧ ignored`という1種類の状態矛盾を、LLMや特定エージェントに依存せず検査する
-リポジトリ品質ゲートです。
+本ツールはMemory、Skill、エージェントの自己改善機能ではありません。汎用coreは、adapterが
+返した安定Finding IDをレビュー済みbaselineと比較し、`accepted / new / resolved`を機械判定して
+入力digest付きreceiptを返します。Gitの`tracked ∧ ignored`検査は既存CLI互換を維持しています。
 
-将来は同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、memory、skills、
-tool権限、agent設定、evalなどへ適用できる共通engineとアダプターへ拡張します。Hermes Agentなどが
+同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、将来memory、skills、
+tool権限、agent設定、evalなどへ適用できます。Hermes Agentなどが
 知識や手順を学習・再利用する層だとすれば、本ツールはその変化が安全基準を後退させていないかを
 外側から決定論的に検査する補完層です。
 
@@ -64,6 +64,22 @@ flowchart LR
 
 ## 使い方
 
+### 汎用engine（opt-in）
+
+adapterが`ai-ratchet-gate.observation/v1`のJSONを生成し、レビュー済みの
+`ai-ratchet-gate.baseline/v1`とともに渡します。
+
+```console
+ai-ratchet-gate evaluate \
+  --observation observation.json \
+  --baseline baseline.json \
+  --expected-subject repo:owner/name@COMMIT_SHA \
+  --receipt receipt.json
+```
+
+exit codeはallow=`0`、deny=`1`、schema不明や観測不能=`2`です。baselineの拡大、waiver、
+ruleのenforce昇格は自動承認しません。契約詳細は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
+
 ### AIを使う人
 
 このリポジトリのGitHub URLを、普段使っているAIのチャットへコピー＆ペーストし、
@@ -98,8 +114,8 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## 限界 (正直に)
 
-- 検出するのは「tracked ∧ ignored」という**1 つの不変条件だけ**。既存の矛盾は baseline として扱い、
-  新たな増加をラチェット方式で阻止する。品質全般のゲートではない
+- 組み込み観測は現在「tracked ∧ ignored」という**1つの不変条件だけ**。汎用coreが別領域を
+  自動理解するわけではなく、対象ごとに決定論的adapterと人間確認済みfixtureが必要
 - baseline はパス集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
   同一パスが baseline に出入りを繰り返す「往復発散」は検出しない
 - hook を素通りする経路 (`--no-verify`、hook 未導入環境からの commit) は止められない。

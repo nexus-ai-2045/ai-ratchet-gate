@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ai-ratchet-gate"
 version = "0.1.1"
-description = "trackedかつignoredなGit矛盾の新規増加を止めるラチェット型ゲート"
+description = "人間確認済みの失敗をagent非依存の実行可能な非回帰guardへ変えるゲート"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "nexus-ai-2045"}]
-keywords = ["git", "gitignore", "ratchet", "pre-commit", "ai-agent"]
+keywords = ["git", "policy-as-code", "ratchet", "regression", "ai-agent"]
 classifiers = [
   "Private :: Do Not Upload",
   "Programming Language :: Python :: 3",
