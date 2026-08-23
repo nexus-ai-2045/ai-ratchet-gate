@@ -3,7 +3,7 @@
 ## 前提
 
 - 対象リポジトリ、公開名義、最終HEAD、CI、reviewが一致している
-- README、LICENSE、SECURITY.md、PREFLIGHT.md、PUBLIC_READY.mdを人間が確認している
+- README、LICENSE、SECURITY.md、PREFLIGHT.mdを人間が確認している
 - 最終treeと全commit履歴のsecret・個人path検査が成功している
 - privateリポジトリのpublic化、tagのpush、GitHub Releaseの公開を必要に応じて個別に承認している
 - PyPIへ送信しない方針が維持されている

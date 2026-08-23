@@ -51,7 +51,6 @@ ALLOWED_SDIST_SUFFIXES = (
     "ROADMAP.md",
     "LICENSE",
     "SECURITY.md",
-    "PUBLIC_READY.md",
     "docs/architecture.md",
     "docs/prior-art.md",
     "docs/release.md",
