@@ -5,6 +5,8 @@
 - `tracked ∧ ignored` の矛盾を増やさないという不変条件
 - baseline変更を差分としてレビューできること
 - 検査不能を成功として扱わないこと
+- findingの安定した同一性と、軸ごとの新規悪化を相殺しないこと
+- receiptが対象候補と入力へ結び付いていること
 
 ## 想定する入力と失敗
 
@@ -13,6 +15,13 @@
 - 日本語など非ASCII文字を含むパス
 - git実行不能、対象パス不正、baseline欠落
 - baselineの意図しない拡大やskipの常用
+- schema downgrade、未知schema、baseline改ざん
+- 期限切れ、scope不一致、再利用されたwaiver
+- 不安定または重複したfinding IDによる違反隠蔽
+- path traversal、absolute path、symlink / junction経由のrepo外参照
+- 巨大出力、finding件数爆発、observer timeout
+- Unicode正規化衝突、証拠やIDへのsecret・個人情報混入
+- 古いreceiptを異なるHEADや設定へ再利用するreplay
 
 ## 対応
 
@@ -20,9 +29,25 @@
 - baselineにない新規パスをdenyする
 - git実行失敗とbaseline欠落ではfail-closedにする
 - baseline更新とskipを人間レビュー対象として運用文書に残す
+- 未知schema、identity不一致、重複IDをfail-closedにする。waiver検証は次段階で追加する
+- repo-relative pathと正規化規則を固定し、repo外参照を拒否する
+- JSON入力にbyte上限、finding件数と各文字列に上限を設ける。外部adapterのtimeoutは次段階で追加する
+- receiptへbaselineとobservationのdigestを記録し、CLIで期待subjectとの一致を検証する
+- evidence本文を既定で埋めず、安全な要約とdigestを使う
+- 次段階のwaiverはbaselineと分離し、wildcardおよび無期限waiverを許可しない
 
 ## 対象外
 
 - secret、malware、依存関係脆弱性、コード品質全般の検出
 - hookを通らないcommit経路の強制阻止
 - 悪意ある利用者によるコード、baseline、CI設定そのものの改変
+- 任意の第三者adapterを安全に隔離するsandbox
+- LLM出力の意味的正しさや、形式化されていない未知障害の検出
+- hookを迂回する管理者を、このパッケージ単体で阻止すること
+- receipt自己hashによる作成者の真正性証明（必要なら外層の署名・CI attestationを使う）
+
+## 人間レビュー境界
+
+baseline拡大、waiver追加・延長、adapterのenforce昇格、schemaの判定意味変更は人間レビュー対象とする。
+自動化は差分とreceiptを準備できるが、承認そのものは行わない。merge、release、公開、外部送信も
+この脅威モデルの外側にある明示承認境界である。
