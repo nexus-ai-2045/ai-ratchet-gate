@@ -245,6 +245,24 @@ def test_adapter_ignores_info_exclude(tmp_path) -> None:
     assert keys == {"generated.txt"}
 
 
+def test_adapter_maps_timeout_expired_to_ratchet_error(tmp_path, monkeypatch) -> None:
+    """全平台で TimeoutExpired → adapter_observation_timeout を保証する。"""
+    import subprocess
+
+    from ai_ratchet_gate.adapters import tracked_ignored as adapter_module
+
+    def _raise_timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=1)
+
+    monkeypatch.setattr(adapter_module.subprocess, "run", _raise_timeout)
+    with pytest.raises(RatchetError, match="adapter_observation_timeout"):
+        TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo"),
+    reason="FIFO hang repro requires os.mkfifo (unavailable on Windows)",
+)
 def test_adapter_timeout_on_fifo_gitignore(tmp_path, monkeypatch) -> None:
     import subprocess
 
