@@ -3,6 +3,38 @@
 人間が確認した失敗を、agent非依存の実行可能なguardへ変換し、同じ種類の新規悪化を
 fail-closedで止めるratchet型ゲートです。Gitの「trackedなのにignored」は最初の組み込みadapterです。
 
+## ratchetは本質的に何を解決するか
+
+解決する問題は 1 つだけです: **「悪い状態の集合が増えても、誰も気づかないまま作業が続く」**。
+
+- 全部直せとは言わない (既存分はbaselineに記名して見逃す)
+- その代わり、**悪化方向へ 1 件でも増えたら止める** (悪化の単調性を断つ)
+- 改善方向 (集合が縮む) は常に自由
+
+AIエージェント運用でこれが効くのは、エージェントが「直す」より速い対症療法
+(skipする・force addする・押し流す) を高速反復できてしまうためです。ratchetは
+個々の対症療法を禁止する代わりに、**その結果としての悪化だけを機械で検出**します。
+
+## 何が汎用で、何が個別か
+
+| 層 | 中身 | 汎用性 |
+|---|---|---|
+| core (`engine` / `model` / `receipt`) | 安定Finding IDの集合比較・mode判定・digest付きreceipt | 対象を問わない (gitを知らない) |
+| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` の 1 個だけ |
+| baseline / waiver | レビュー済みの見逃しリスト | 形式は汎用、中身は対象ごと |
+
+つまり「git事故ツール」は入口の見た目で、実体は**任意の決定論的検査をratchet化する枠**です。
+第二adapter候補は [ROADMAP](ROADMAP.md) Phase 2 と
+[Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11) (テスト無効化の増分検知) を参照。
+
+## 今なにがratchetとして機能しているか
+
+| 対象 | 状態 |
+|---|---|
+| このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
+| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記 1 個) |
+| memory / skills / tool権限 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
+
 ## 現在の実装と構想
 
 本ツールはMemory、Skill、エージェントの自己改善機能ではありません。汎用coreは、adapterが
