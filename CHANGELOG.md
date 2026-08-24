@@ -17,6 +17,12 @@
 - v0.1の引数なしCLI、テキストbaseline、出力、exit codeを維持
 - 新しい汎用判定は`evaluate` subcommandとしてopt-in提供
 
+### 安全性
+
+- legacy CLIのGit観測を組み込み`TrackedIgnoredAdapter`へ委譲しつつ、互換用`exclude_standard` profileで従来の観測面を維持
+- baselineとreceiptを同一directoryの一時fileからatomic replaceし、途中書込みを公開しない。既存modeを保持し、新規fileは`0644`
+- symlink作成能力がないWindowsでは、symlink専用回帰テストを環境能力skipとして分類
+
 ## [0.1.1] - 2026-08-19
 
 ### 修正

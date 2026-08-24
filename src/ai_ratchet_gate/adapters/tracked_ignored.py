@@ -17,24 +17,39 @@ class TrackedIgnoredAdapter:
     adapter_id = "git.tracked_ignored"
     adapter_version = "1"
 
-    def observe(self, context: ScanContext) -> Observation:
-        git_env = {
-            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-        }
-        git_env["GIT_CONFIG_GLOBAL"] = os.devnull
-        git_env["GIT_CONFIG_SYSTEM"] = os.devnull
+    def __init__(self, *, ignore_profile: str = "repo_only") -> None:
+        if ignore_profile not in {"repo_only", "exclude_standard"}:
+            raise ValueError("unsupported_ignore_profile")
+        self.ignore_profile = ignore_profile
+
+    def list_paths(self, context: ScanContext) -> tuple[str, ...]:
+        """Gitが返したpathをUnicode正規化せず列挙する。"""
         try:
-            # repo-local core.fsmonitor hook を無効化し、外部 excludesFile も固定空に隔離する。
-            # --exclude-standard は .git/info/exclude を含むため clone 間で非決定になる。
-            # レビュー対象の .gitignore のみ (--exclude-per-directory) を使う。
-            completed = subprocess.run(
-                [
+            if self.ignore_profile == "exclude_standard":
+                # legacy CLI互換: Git環境・global/system configも従来どおり継承する。
+                command = [
+                    "git", "-C", str(context.root), "ls-files", "-i", "-c",
+                    "--exclude-standard", "-z",
+                ]
+                git_env = None
+            else:
+                # 汎用profileは外部設定を隔離し、レビュー対象の.gitignoreだけを使う。
+                git_env = {
+                    key: value
+                    for key, value in os.environ.items()
+                    if not key.startswith("GIT_")
+                }
+                git_env["GIT_CONFIG_GLOBAL"] = os.devnull
+                git_env["GIT_CONFIG_SYSTEM"] = os.devnull
+                command = [
                     "git", "-C", str(context.root),
                     "-c", "core.fsmonitor=false",
                     "-c", f"core.excludesFile={os.devnull}",
                     "ls-files", "-i", "-c",
                     "--exclude-per-directory=.gitignore", "-z",
-                ],
+                ]
+            completed = subprocess.run(
+                command,
                 capture_output=True,
                 check=True,
                 env=git_env,
@@ -45,7 +60,10 @@ class TrackedIgnoredAdapter:
             raise RatchetError("adapter_observation_timeout") from error
         except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as error:
             raise RatchetError("adapter_observation_failed") from error
-        paths = sorted(item for item in raw.split("\0") if item)
+        return tuple(sorted(item for item in raw.split("\0") if item))
+
+    def observe(self, context: ScanContext) -> Observation:
+        paths = self.list_paths(context)
         findings = [
             Finding.create(
                 adapter_id=self.adapter_id,
