@@ -6,6 +6,10 @@
 
 ### 追加
 
+- legacy CLIにratchet可視化バナー。denyは「🔒 RATCHET DENY: 新規悪化 N 件を阻止 (grandfather 済み M 件は通過中)」、
+  allowも「🔓 RATCHET OK: 新規 0 / baseline M 件を監視中」で、ratchetが効いている状態を毎回明示する
+  (exit code・receiptは不変。機械連携は壊さない)
+
 - agent非依存のFinding、Observation、Decisionによる汎用ラチェットcore
 - `new_only` / `exact_baseline` policyと`observe` / `ratchet` / `strict` mode
 - 厳格なv1 observation・baseline入力と、入力digestへ束縛した決定論的receipt

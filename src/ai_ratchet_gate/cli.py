@@ -359,9 +359,17 @@ def main(argv: list[str] | None = None) -> int:
             f"(棚卸しの成果。--update-baseline で縮められます)"
         )
     if not new:
-        print(f"==> ai-ratchet-gate OK (現存 {len(current)} 件 / 新規 0)")
+        # ratchet が生きていること (何件を監視し、何件を見逃しているか) を毎回明示する
+        print(
+            f"==> 🔓 RATCHET OK: 新規 0 / baseline {len(current)} 件を監視中"
+            + (f" (解消済み {len(resolved)} 件は縮小可能)" if resolved else "")
+        )
         return 0
 
+    print(
+        f"==> 🔒 RATCHET DENY: 新規悪化 {len(new)} 件を阻止 "
+        f"(grandfather 済み {len(current) - len(new)} 件は通過中)"
+    )
     print("ERROR [ai_ratchet_gate]: tracked なのに gitignore にマッチするファイルが増えました:")
     for entry in new:
         print(f"  {entry}")
