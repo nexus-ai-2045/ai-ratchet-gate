@@ -565,3 +565,82 @@ def test_evaluate_cli_emits_utf8_receipt_under_ascii_stdout(
     payload = json.loads(fake.buffer.getvalue().decode("utf-8"))
     assert payload["decision"]["status"] == "allow"
     assert subject in fake.buffer.getvalue().decode("utf-8")
+
+
+# --- observe subcommand -----------------------------------------------------
+
+
+def _git_env() -> dict[str, str]:
+    import os
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    return env
+
+
+def test_observe_cli_output_feeds_evaluate(tmp_path: Path, capsys) -> None:
+    """observe が書いた observation.json を evaluate がそのまま受理する。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+
+    assert main(
+        [
+            "observe", "--repo", str(repo), "--subject", "repo:x@head",
+            "--out", str(observation),
+        ]
+    ) == 0
+    payload = json.loads(observation.read_text(encoding="utf-8"))
+    assert payload["schema"] == "ai-ratchet-gate.observation/v1"
+    assert payload["adapter_id"] == "git.tracked_ignored"
+    assert [f["subject_key"] for f in payload["findings"]] == ["generated.txt"]
+
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "git.tracked_ignored",
+                "adapter_version": "1",
+                "subject": "repo:x@head",
+                "policy": "new_only",
+                "finding_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    code = main(
+        [
+            "evaluate", "--observation", str(observation), "--baseline",
+            str(baseline), "--expected-subject", "repo:x@head",
+        ]
+    )
+    assert code == 1
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["decision"]["new"] == [payload["findings"][0]["finding_id"]]
+
+
+def test_observe_cli_fails_closed_outside_git_repo(tmp_path: Path, capsys) -> None:
+    code = main(["observe", "--repo", str(tmp_path), "--subject", "repo:x@head"])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "tool_error"
+
+
+def test_observe_cli_rejects_empty_subject(tmp_path: Path, capsys) -> None:
+    code = main(["observe", "--repo", str(tmp_path), "--subject", ""])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "tool_error"

@@ -177,7 +177,8 @@ def test_main_fails_closed_without_baseline(tmp_path: Path, capsys) -> None:
         ["--repo", str(tmp_path), "--baseline", str(tmp_path / "missing.txt")]
     )
 
-    assert code == 1
+    # 観測不能 / 前提欠落は違反 (1) と区別して 2 (tool_error 相当)
+    assert code == 2
     assert "baseline" in capsys.readouterr().out
 
 
@@ -226,3 +227,53 @@ def test_main_skip_env_bypasses_with_notice(tmp_path: Path, capsys, monkeypatch)
 
     assert code == 0
     assert "SKIP" in capsys.readouterr().out
+
+
+# --- adapter 経由の legacy 列挙 (決定論 / fail-closed) ------------------------
+
+
+def test_list_tracked_ignored_ignores_clone_local_excludes(tmp_path: Path) -> None:
+    """global excludesFile と .git/info/exclude は clone ごとに違うので判定へ混ぜない。"""
+    _init_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    for name in ("generated.txt", "extra.txt", "local-only.txt"):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    _commit_all(tmp_path)
+    external = tmp_path / "external.excludes"
+    external.write_text("extra.txt\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "config", "core.excludesFile", str(external)],
+        cwd=tmp_path, env=_git_env(), check=True,
+    )
+    info_exclude = tmp_path / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text("local-only.txt\n", encoding="utf-8")
+
+    assert list_tracked_ignored(tmp_path) == {"generated.txt"}
+
+
+def test_list_tracked_ignored_rejects_undecodable_path(monkeypatch) -> None:
+    """非 UTF-8 パスを U+FFFD に潰して同一視しない (fail-closed)。"""
+    import pytest
+
+    from ai_ratchet_gate.adapters import tracked_ignored
+    from ai_ratchet_gate.model import RatchetError
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout=b"\xff.log\0", stderr=b"")
+
+    monkeypatch.setattr(tracked_ignored.subprocess, "run", fake_run)
+
+    with pytest.raises(RatchetError):
+        list_tracked_ignored(Path("."))
+
+
+def test_main_git_failure_exits_2_not_1(tmp_path: Path, capsys) -> None:
+    """git repo でない場所 = 観測不能。deny (1) と区別して 2 を返す。"""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline(set()), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    assert code == 2
+    assert "ERROR" in capsys.readouterr().out
