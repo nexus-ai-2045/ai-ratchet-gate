@@ -1,11 +1,35 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
-from ai_ratchet_gate.cli import main
+import pytest
+
+from ai_ratchet_gate.cli import _atomic_write_text, main
 from ai_ratchet_gate.model import Finding
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode contract")
+def test_atomic_write_preserves_existing_mode(tmp_path: Path) -> None:
+    target = tmp_path / "receipt.json"
+    target.write_text("old", encoding="utf-8")
+    target.chmod(0o640)
+
+    _atomic_write_text(target, "new")
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode contract")
+def test_atomic_write_uses_documented_mode_for_new_file(tmp_path: Path) -> None:
+    target = tmp_path / "receipt.json"
+
+    _atomic_write_text(target, "new")
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
 
 
 def test_evaluate_cli_writes_receipt_and_denies_new_finding(tmp_path: Path) -> None:
@@ -318,7 +342,10 @@ def test_evaluate_cli_rejects_receipt_symlink_to_baseline(
 ) -> None:
     observation, baseline = _write_allow_pair(tmp_path)
     receipt = tmp_path / "receipt-link.json"
-    receipt.symlink_to(baseline)
+    try:
+        receipt.symlink_to(baseline)
+    except OSError as error:
+        pytest.skip(f"symlink creation is unavailable in this environment: {error}")
     before = baseline.read_text(encoding="utf-8")
     assert main(
         [
@@ -363,6 +390,36 @@ def test_evaluate_cli_rejects_receipt_hardlink_to_observation(
     ) == 2
     assert "receipt_path_aliases_input" in capsys.readouterr().out
     assert observation.read_text(encoding="utf-8") == before
+
+
+def test_receipt_replace_failure_preserves_previous_receipt(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """途中失敗で既存receiptを壊さず、一時fileも残さない。"""
+    observation, baseline = _write_allow_pair(tmp_path)
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text("previous\n", encoding="utf-8")
+
+    def fail_replace(_source: object, _target: object) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr("ai_ratchet_gate.cli.os.replace", fail_replace)
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--receipt",
+            str(receipt),
+            "--expected-subject",
+            "repo:abc",
+        ]
+    ) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "tool_error"
+    assert receipt.read_text(encoding="utf-8") == "previous\n"
+    assert not list(tmp_path.glob(".receipt.json.*.tmp"))
 
 
 def test_evaluate_cli_accepts_nfd_subject_identities(tmp_path: Path, capsys) -> None:
