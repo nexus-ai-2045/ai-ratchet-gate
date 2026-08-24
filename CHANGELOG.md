@@ -17,6 +17,9 @@
 
 ### 変更
 
+- `observe`は検査対象repo内への`--out`を拒否し (read-only契約)、`--out`指定時はstdoutへ
+  findingsを流さず、`evaluate`の入力上限を超えるobservationをfail-closedで拒否する
+- adapterはmerge未解決indexの複数stageで重複する同一パスを1 findingへ潰す
 - legacy CLIは非UTF-8パスをU+FFFDへ置換せず、fail-closedで停止する
 - legacy CLIのexit codeを`evaluate`と揃え、git列挙失敗とbaseline欠落は違反（`1`）と区別して`2`を返す
 

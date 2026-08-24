@@ -260,10 +260,22 @@ def _observe_main(argv: list[str]) -> int:
         help="enforcement 側が固定する候補 identity (例: repo:owner/name@COMMIT_SHA)",
     )
     parser.add_argument(
-        "--out", type=Path, help="observation JSON の出力先。省略時は stdout"
+        "--out",
+        type=Path,
+        help="observation JSON の出力先 (検査対象repoの外)。省略時は stdout へ出力",
     )
     args = parser.parse_args(argv)
     try:
+        if args.out is not None:
+            # 検査対象repo内への書込みは read-only 契約違反 (tracked file 上書き) になる
+            try:
+                out_inside_repo = args.out.resolve().is_relative_to(
+                    args.repo.resolve()
+                )
+            except OSError as error:
+                raise RatchetError("observation_out_unresolvable") from error
+            if out_inside_repo:
+                raise RatchetError("observation_out_inside_repo")
         observation = TrackedIgnoredAdapter().observe(
             ScanContext(args.repo, args.subject)
         )
@@ -271,10 +283,16 @@ def _observe_main(argv: list[str]) -> int:
             observation.to_dict(), ensure_ascii=False, sort_keys=True,
             separators=(",", ":"),
         ) + "\n"
+        if len(text.encode("utf-8")) > MAX_JSON_BYTES:
+            # evaluate が受理できない artifact を「成功」として出さない (fail-closed)
+            raise RatchetError("observation_too_large")
         if args.out:
             args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(text, encoding="utf-8")
-        _emit_utf8(text)
+            _atomic_write_text(args.out, text)
+            # CI log へ finding 本文を流さない。stdout 出力は --out 省略時のみ
+            print(f"==> ai-ratchet-gate observation を書き出しました -> {args.out}")
+        else:
+            _emit_utf8(text)
         return 0
     except (RatchetError, OSError) as error:
         _emit_utf8(json.dumps({"status": "tool_error", "error": str(error)}))

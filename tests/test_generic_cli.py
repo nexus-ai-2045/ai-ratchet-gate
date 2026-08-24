@@ -689,6 +689,81 @@ def test_observe_cli_output_feeds_evaluate(tmp_path: Path, capsys) -> None:
     assert receipt["decision"]["new"] == [payload["findings"][0]["finding_id"]]
 
 
+def test_observe_cli_rejects_out_inside_inspected_repo(tmp_path: Path, capsys) -> None:
+    """--out が検査対象repo内 (tracked fileの上書き面) を指したら書込まず停止する。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=_git_env(), check=True)
+    target = repo / ".gitignore"
+    target.write_text("keep\n", encoding="utf-8")
+
+    code = main(
+        ["observe", "--repo", str(repo), "--subject", "repo:x@head",
+         "--out", str(target)]
+    )
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "tool_error"
+    assert "observation_out_inside_repo" in payload["error"]
+    assert target.read_text(encoding="utf-8") == "keep\n"  # 上書きしていない
+
+
+def test_observe_cli_out_suppresses_stdout_findings(tmp_path: Path, capsys) -> None:
+    """--out 指定時は stdout へ observation JSON を流さない (CI logへのpath漏洩防止)。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    out = tmp_path / "observation.json"
+
+    assert main(
+        ["observe", "--repo", str(repo), "--subject", "repo:x@head",
+         "--out", str(out)]
+    ) == 0
+    stdout = capsys.readouterr().out
+    assert "generated.txt" not in stdout
+    assert "schema" not in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["findings"]
+
+
+def test_observe_cli_rejects_observation_exceeding_evaluate_limit(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """evaluate が受理できないサイズの observation を成功として出さない。"""
+    import subprocess
+
+    from ai_ratchet_gate import cli as cli_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    monkeypatch.setattr(cli_module, "MAX_JSON_BYTES", 64)
+
+    code = main(["observe", "--repo", str(repo), "--subject", "repo:x@head"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert "observation_too_large" in payload["error"]
+
+
 def test_observe_cli_fails_closed_outside_git_repo(tmp_path: Path, capsys) -> None:
     code = main(["observe", "--repo", str(tmp_path), "--subject", "repo:x@head"])
 
