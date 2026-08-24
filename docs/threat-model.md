@@ -34,6 +34,9 @@
 - JSON入力にbyte上限、finding件数と各文字列に上限を設ける。外部adapterのtimeoutは次段階で追加する
 - receiptへbaselineとobservationのdigestを記録し、CLIで期待subjectとの一致を検証する
 - evidence本文を既定で埋めず、安全な要約とdigestを使う
+- baselineとreceiptは同一directoryの一時fileへ排他的に書き、`fsync`後のatomic replaceで
+  途中状態を公開しない。置換失敗時は既存fileを維持し、一時fileを回収する。既存fileのmodeは
+  保持し、新規fileは`0644`とする
 - 次段階のwaiverはbaselineと分離し、wildcardおよび無期限waiverを許可しない
 
 ## 対象外

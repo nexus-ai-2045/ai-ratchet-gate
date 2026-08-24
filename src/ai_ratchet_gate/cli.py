@@ -27,6 +27,7 @@ import json
 import os
 import stat
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -47,18 +48,17 @@ BASELINE_HEADER = """\
 """
 
 
-LEGACY_SUBJECT = "repo:legacy"
-
-
 def list_tracked_ignored(repo: Path) -> set[str]:
     """tracked かつ ignore ルールにマッチするファイルを列挙する。
 
-    組み込み adapter を経由し、レビュー対象の `.gitignore` だけを見る
-    (global excludesFile / `.git/info/exclude` は clone ごとに違うため混ぜない)。
-    非 UTF-8 パスや git 失敗は RatchetError で fail-closed。
+    -z 区切りで取り、非 ASCII パスの quote (octal escape) を回避する。
+    非 UTF-8 パスは U+FFFD へ潰さず RatchetError で fail-closed。
     """
-    observation = TrackedIgnoredAdapter().observe(ScanContext(repo, LEGACY_SUBJECT))
-    return {item.subject_key for item in observation.findings}
+    # legacy入口は従来の --exclude-standard 観測面を維持する。
+    paths = TrackedIgnoredAdapter(ignore_profile="exclude_standard").list_paths(
+        ScanContext(repo, f"legacy:{repo.resolve()}")
+    )
+    return set(paths)
 
 
 def parse_baseline(path: Path) -> set[str]:
@@ -153,6 +153,31 @@ def _paths_alias(left: Path, right: Path) -> bool:
         return False
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """同一directoryで原子的に置換し、既存modeまたは新規0644を適用する。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    target_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    descriptor, raw_temp = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temp = Path(raw_temp)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            os.chmod(temp, target_mode)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
 def _evaluate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="汎用findingをbaselineと比較する")
     parser.add_argument("--observation", required=True, type=Path)
@@ -215,8 +240,7 @@ def _evaluate_main(argv: list[str]) -> int:
                 args.receipt, args.baseline
             ):
                 raise RatchetError("receipt_path_aliases_input")
-            args.receipt.parent.mkdir(parents=True, exist_ok=True)
-            args.receipt.write_text(receipt, encoding="utf-8")
+            _atomic_write_text(args.receipt, receipt)
         _emit_utf8(receipt)
         return 0 if decision.status == "allow" else 1
     except (RatchetError, OSError) as error:
@@ -295,8 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.update_baseline:
-        baseline_path.parent.mkdir(parents=True, exist_ok=True)
-        baseline_path.write_text(format_baseline(current), encoding="utf-8")
+        _atomic_write_text(baseline_path, format_baseline(current))
         print(
             f"==> ai-ratchet-gate baseline を更新しました ({len(current)} 件) -> "
             f"{baseline_path}"

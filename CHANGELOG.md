@@ -17,18 +17,21 @@
 
 ### 変更
 
-- legacy CLIの列挙を組み込みadapter経由へ統一。global `core.excludesFile`と`.git/info/exclude`を
-  判定へ混ぜず、レビュー対象の`.gitignore`だけで決定論的に判定する
 - legacy CLIは非UTF-8パスをU+FFFDへ置換せず、fail-closedで停止する
 - legacy CLIのexit codeを`evaluate`と揃え、git列挙失敗とbaseline欠落は違反（`1`）と区別して`2`を返す
 
 ### 互換性
 
-- v0.1の引数なしCLI、テキストbaseline、allow/denyの出力とexit code（`0` / `1`）を維持
+- v0.1の引数なしCLI、テキストbaseline、allow/denyの出力とexit code（`0` / `1`）を維持。
+  legacy入口の観測面（`--exclude-standard`互換）も維持
 - 観測不能時のexit codeは`1`から`2`へ変更。hookで`!= 0`判定している利用者には影響しない
-- clone固有のignore設定（global excludesFile / info/exclude）に依存していたbaselineは、
-  `--update-baseline`で再生成が必要になる場合がある
 - 新しい汎用判定は`observe` / `evaluate` subcommandとしてopt-in提供
+
+### 安全性
+
+- legacy CLIのGit観測を組み込み`TrackedIgnoredAdapter`へ委譲しつつ、互換用`exclude_standard` profileで従来の観測面を維持
+- baselineとreceiptを同一directoryの一時fileからatomic replaceし、途中書込みを公開しない。既存modeを保持し、新規fileは`0644`
+- symlink作成能力がないWindowsでは、symlink専用回帰テストを環境能力skipとして分類
 
 ## [0.1.1] - 2026-08-19
 

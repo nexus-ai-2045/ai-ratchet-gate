@@ -129,6 +129,48 @@ def test_list_tracked_ignored_handles_non_ascii_paths(tmp_path: Path) -> None:
     assert list_tracked_ignored(tmp_path) == {"計測ログ.log"}
 
 
+def test_legacy_scan_preserves_git_path_unicode_form(tmp_path: Path) -> None:
+    """legacy baseline用のpathはGitが返したUnicode形式を変えない。"""
+    _init_repo(tmp_path)
+    nfd_path = "cafe\u0301.log"
+    (tmp_path / nfd_path).write_text("v1", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    assert list_tracked_ignored(tmp_path) == {nfd_path}
+
+
+def test_legacy_scan_preserves_exclude_standard_semantics(tmp_path: Path) -> None:
+    """legacy入口は既存互換としてclone-local excludeも観測する。"""
+    _init_repo(tmp_path)
+    (tmp_path / "local-only.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    info_exclude = tmp_path / ".git" / "info" / "exclude"
+    info_exclude.write_text("*.log\n", encoding="utf-8")
+
+    assert list_tracked_ignored(tmp_path) == {"local-only.log"}
+
+
+def test_legacy_scan_preserves_global_excludes_semantics(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "global-only.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    excludes = tmp_path / "global-excludes"
+    excludes.write_text("*.log\n", encoding="utf-8")
+    global_config = tmp_path / "global.gitconfig"
+    subprocess.run(
+        ["git", "config", "--file", str(global_config), "core.excludesFile", str(excludes)],
+        check=True,
+        env=_git_env(),
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+
+    assert list_tracked_ignored(tmp_path) == {"global-only.log"}
+
+
 def test_main_allows_when_no_new_inconsistency(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     (tmp_path / "src.py").write_text("x = 1\n", encoding="utf-8")
@@ -229,27 +271,7 @@ def test_main_skip_env_bypasses_with_notice(tmp_path: Path, capsys, monkeypatch)
     assert "SKIP" in capsys.readouterr().out
 
 
-# --- adapter 経由の legacy 列挙 (決定論 / fail-closed) ------------------------
-
-
-def test_list_tracked_ignored_ignores_clone_local_excludes(tmp_path: Path) -> None:
-    """global excludesFile と .git/info/exclude は clone ごとに違うので判定へ混ぜない。"""
-    _init_repo(tmp_path)
-    (tmp_path / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
-    for name in ("generated.txt", "extra.txt", "local-only.txt"):
-        (tmp_path / name).write_text("x", encoding="utf-8")
-    _commit_all(tmp_path)
-    external = tmp_path / "external.excludes"
-    external.write_text("extra.txt\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "config", "core.excludesFile", str(external)],
-        cwd=tmp_path, env=_git_env(), check=True,
-    )
-    info_exclude = tmp_path / ".git" / "info" / "exclude"
-    info_exclude.parent.mkdir(parents=True, exist_ok=True)
-    info_exclude.write_text("local-only.txt\n", encoding="utf-8")
-
-    assert list_tracked_ignored(tmp_path) == {"generated.txt"}
+# --- adapter 経由の legacy 列挙 (fail-closed) --------------------------------
 
 
 def test_list_tracked_ignored_rejects_undecodable_path(monkeypatch) -> None:

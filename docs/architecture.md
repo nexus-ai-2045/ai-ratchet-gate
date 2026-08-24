@@ -29,10 +29,16 @@
 - JSON baseline: 既存負債のreviewed snapshot。期限付きwaiverは次段階で別schemaとして追加する
 - `receipt`: subject SHAと全入力digestを結び付けた機械可読証跡
 
+legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を二重化しない。legacy入口は
+互換用`exclude_standard` profile、汎用入口は再現可能な`repo_only` profileを使う。baselineとreceiptの
+書込みは同一directoryの一時fileを`fsync`した後にatomic replaceし、並走agentが途中状態を
+観測しないようにする。
+
 ## データの流れ
 
 1. CLIが組み込みadapter（`git.tracked_ignored`）経由でgitの標準コマンドを実行する。
-   `.gitignore`だけを見て、global excludesFileや`.git/info/exclude`は判定へ混ぜない。
+   legacy入口は互換用`exclude_standard` profile、汎用入口（`observe`）は`.gitignore`だけを見る
+   再現可能な`repo_only` profileを使う。
 2. Gitで追跡済みかつignore対象のパスを、NUL区切りのUTF-8として受け取る。
    UTF-8として読めないパスはfail-closedで停止する。
 3. baselineのパス集合と比較する。
