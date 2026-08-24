@@ -299,3 +299,45 @@ def test_main_git_failure_exits_2_not_1(tmp_path: Path, capsys) -> None:
 
     assert code == 2
     assert "ERROR" in capsys.readouterr().out
+
+
+# --- ratchet 可視化 (deny/allow を人間に明示する) ----------------------------
+
+
+def test_main_deny_banner_shows_ratchet_engaged(tmp_path: Path, capsys) -> None:
+    """deny 時、ratchet が効いたこと・grandfather 分は通過中なことを 1 行目で明示。"""
+    _init_repo(tmp_path)
+    (tmp_path / "old.log").write_text("v1", encoding="utf-8")
+    (tmp_path / "new.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline({"old.log"}), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "RATCHET DENY" in out
+    assert "新規悪化 1 件を阻止" in out
+    assert "grandfather 済み 1 件は通過中" in out
+
+
+def test_main_allow_banner_shows_ratchet_alive(tmp_path: Path, capsys) -> None:
+    """allow 時も、監視が生きていること (baseline 件数) を毎回表示する。"""
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline({"out.log", "resolved.log"}), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "RATCHET OK" in out
+    assert "baseline 1 件を監視中" in out
+    assert "解消済み 1 件は縮小可能" in out
