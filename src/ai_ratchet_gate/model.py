@@ -133,6 +133,16 @@ class Observation:
             raise RatchetError("adapter_identity_mismatch")
         return cls(aid, version, _nonempty(subject, "subject"), normalized)
 
+    def to_dict(self) -> dict[str, object]:
+        """`ai-ratchet-gate.observation/v1` 形式。`evaluate` がそのまま受理する。"""
+        return {
+            "schema": "ai-ratchet-gate.observation/v1",
+            "adapter_id": self.adapter_id,
+            "adapter_version": self.adapter_version,
+            "subject": self.subject,
+            "findings": [item.to_dict() for item in self.findings],
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class Decision:

@@ -60,7 +60,9 @@ class TrackedIgnoredAdapter:
             raise RatchetError("adapter_observation_timeout") from error
         except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as error:
             raise RatchetError("adapter_observation_failed") from error
-        return tuple(sorted(item for item in raw.split("\0") if item))
+        # merge 未解決の index では同一パスが stage ごとに重複して出る。
+        # 重複を finding 重複エラーへ波及させず、パス集合として返す。
+        return tuple(sorted({item for item in raw.split("\0") if item}))
 
     def observe(self, context: ScanContext) -> Observation:
         paths = self.list_paths(context)

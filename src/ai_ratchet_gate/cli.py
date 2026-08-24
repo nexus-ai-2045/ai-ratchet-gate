@@ -26,7 +26,6 @@ import argparse
 import json
 import os
 import stat
-import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -53,6 +52,7 @@ def list_tracked_ignored(repo: Path) -> set[str]:
     """tracked かつ ignore ルールにマッチするファイルを列挙する。
 
     -z 区切りで取り、非 ASCII パスの quote (octal escape) を回避する。
+    非 UTF-8 パスは U+FFFD へ潰さず RatchetError で fail-closed。
     """
     # legacy入口は従来の --exclude-standard 観測面を維持する。
     paths = TrackedIgnoredAdapter(ignore_profile="exclude_standard").list_paths(
@@ -249,10 +249,63 @@ def _evaluate_main(argv: list[str]) -> int:
         return 2
 
 
+def _observe_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="組み込み adapter で対象を read-only 観測し observation JSON を出す"
+    )
+    parser.add_argument("--repo", type=Path, default=Path("."))
+    parser.add_argument(
+        "--subject",
+        required=True,
+        help="enforcement 側が固定する候補 identity (例: repo:owner/name@COMMIT_SHA)",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="observation JSON の出力先 (検査対象repoの外)。省略時は stdout へ出力",
+    )
+    args = parser.parse_args(argv)
+    try:
+        if args.out is not None:
+            # 検査対象repo内への書込みは read-only 契約違反 (tracked file 上書き) になる
+            try:
+                out_inside_repo = args.out.resolve().is_relative_to(
+                    args.repo.resolve()
+                )
+            except OSError as error:
+                raise RatchetError("observation_out_unresolvable") from error
+            if out_inside_repo:
+                raise RatchetError("observation_out_inside_repo")
+        observation = TrackedIgnoredAdapter().observe(
+            ScanContext(args.repo, args.subject)
+        )
+        text = json.dumps(
+            observation.to_dict(), ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n"
+        if len(text.encode("utf-8")) > MAX_JSON_BYTES:
+            # evaluate が受理できない artifact を「成功」として出さない (fail-closed)
+            raise RatchetError("observation_too_large")
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(args.out, text)
+            # CI log へ finding 本文を流さない。stdout 出力は --out 省略時のみ
+            print(f"==> ai-ratchet-gate observation を書き出しました -> {args.out}")
+        else:
+            _emit_utf8(text)
+        return 0
+    except (RatchetError, OSError) as error:
+        _emit_utf8(json.dumps({"status": "tool_error", "error": str(error)}))
+        _emit_utf8("\n")
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     effective_argv = list(argv) if argv is not None else sys.argv[1:]
     if effective_argv[:1] == ["evaluate"]:
         return _evaluate_main(effective_argv[1:])
+    if effective_argv[:1] == ["observe"]:
+        return _observe_main(effective_argv[1:])
     parser = argparse.ArgumentParser(
         description="tracked∧ignored の矛盾の増分を deny する ratchet ゲート"
     )
@@ -277,10 +330,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         current = list_tracked_ignored(args.repo)
-    except (subprocess.CalledProcessError, OSError, RatchetError) as error:
-        # 列挙できないのに OK を返さない (fail-closed)
+    except (RatchetError, OSError) as error:
+        # 列挙できないのに OK を返さない (fail-closed)。
+        # 違反 (1) と観測不能 (2) を hook 側で区別できるよう evaluate と揃える。
         print(f"ERROR [ai_ratchet_gate]: git 列挙に失敗しました: {error}")
-        return 1
+        return 2
 
     if args.update_baseline:
         _atomic_write_text(baseline_path, format_baseline(current))
@@ -295,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
             f"ERROR [ai_ratchet_gate]: baseline がありません: {baseline_path}\n"
             f"  初期化: python ai_ratchet_gate.py --update-baseline"
         )
-        return 1
+        return 2
 
     new, resolved = diff_against_baseline(current, parse_baseline(baseline_path))
 

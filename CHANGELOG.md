@@ -12,10 +12,23 @@
 - read-only adapter契約と`git.tracked_ignored`組み込みadapter
 - 汎用engineの責務、人間停止線、先行概念を固定するADRと脅威モデル
 
+- `observe` subcommand。組み込みadapterで対象を観測し、`evaluate`が受理するobservation JSONを出力
+- `Observation.to_dict()`と、`ScanContext` / `TrackedIgnoredAdapter`の公開API export
+
+### 変更
+
+- `observe`は検査対象repo内への`--out`を拒否し (read-only契約)、`--out`指定時はstdoutへ
+  findingsを流さず、`evaluate`の入力上限を超えるobservationをfail-closedで拒否する
+- adapterはmerge未解決indexの複数stageで重複する同一パスを1 findingへ潰す
+- legacy CLIは非UTF-8パスをU+FFFDへ置換せず、fail-closedで停止する
+- legacy CLIのexit codeを`evaluate`と揃え、git列挙失敗とbaseline欠落は違反（`1`）と区別して`2`を返す
+
 ### 互換性
 
-- v0.1の引数なしCLI、テキストbaseline、出力、exit codeを維持
-- 新しい汎用判定は`evaluate` subcommandとしてopt-in提供
+- v0.1の引数なしCLI、テキストbaseline、allow/denyの出力とexit code（`0` / `1`）を維持。
+  legacy入口の観測面（`--exclude-standard`互換）も維持
+- 観測不能時のexit codeは`1`から`2`へ変更。hookで`!= 0`判定している利用者には影響しない
+- 新しい汎用判定は`observe` / `evaluate` subcommandとしてopt-in提供
 
 ### 安全性
 

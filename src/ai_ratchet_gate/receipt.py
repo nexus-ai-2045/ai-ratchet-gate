@@ -13,13 +13,7 @@ def _canonical(value: object) -> str:
 
 
 def build_receipt(decision: Decision) -> str:
-    complete_observation = {
-        "schema": "ai-ratchet-gate.observation/v1",
-        "adapter_id": decision.observation.adapter_id,
-        "adapter_version": decision.observation.adapter_version,
-        "subject": decision.observation.subject,
-        "findings": [item.to_dict() for item in decision.observation.findings],
-    }
+    complete_observation = decision.observation.to_dict()
     public_observation = {
         "adapter_id": decision.observation.adapter_id,
         "adapter_version": decision.observation.adapter_version,

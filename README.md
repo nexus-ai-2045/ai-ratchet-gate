@@ -66,10 +66,15 @@ flowchart LR
 
 ### 汎用engine（opt-in）
 
-adapterが`ai-ratchet-gate.observation/v1`のJSONを生成し、レビュー済みの
-`ai-ratchet-gate.baseline/v1`とともに渡します。
+`observe`が組み込みadapterで対象をread-only観測して`ai-ratchet-gate.observation/v1`のJSONを
+生成し、`evaluate`がそれをレビュー済みの`ai-ratchet-gate.baseline/v1`と比較します。
 
 ```console
+ai-ratchet-gate observe \
+  --repo . \
+  --subject repo:owner/name@COMMIT_SHA \
+  --out observation.json
+
 ai-ratchet-gate evaluate \
   --observation observation.json \
   --baseline baseline.json \
@@ -77,8 +82,12 @@ ai-ratchet-gate evaluate \
   --receipt receipt.json
 ```
 
-exit codeはallow=`0`、deny=`1`、schema不明や観測不能=`2`です。baselineの拡大、waiver、
-ruleのenforce昇格は自動承認しません。契約詳細は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
+exit codeはallow=`0`、deny=`1`、schema不明や観測不能=`2`です。`--subject`と
+`--expected-subject`はenforcement側（hook / CI）が固定し、利用者入力から組み立てないでください。
+`evaluate --mode observe`は新規findingがあってもexit 0を返す観測専用modeなので、
+enforcement側では`--mode`を渡さない（既定`ratchet`）か`strict`に固定してください。
+baselineの拡大、waiver、ruleのenforce昇格は自動承認しません。契約詳細は
+[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
 
 ### AIを使う人
 
@@ -98,6 +107,16 @@ GitHub Release版は、release assetを直接指定してインストールし�
 `python -m pip install https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl`
 です。PyPIには公開しないため、`pip install ai-ratchet-gate`は実行しないでください。同名を
 第三者が取得した場合、無関係なパッケージをインストールする危険があります。
+
+配布物のSHA-256はRelease preflightのCI logとGitHub Releaseの本文に記録します。CIや共有環境では
+URL直指定ではなく、次のようにhashを固定したrequirementsで検証付きインストールしてください。
+
+```text
+ai-ratchet-gate @ https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl \
+  --hash=sha256:<Release本文に記載のSHA-256>
+```
+
+`python -m pip install --require-hashes -r requirements.txt`で、hash不一致時は停止します。
 
 deny 時のエラー文には修復手順が同梱されます:
 生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` /
