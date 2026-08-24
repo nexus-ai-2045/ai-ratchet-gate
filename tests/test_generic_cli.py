@@ -622,3 +622,157 @@ def test_evaluate_cli_emits_utf8_receipt_under_ascii_stdout(
     payload = json.loads(fake.buffer.getvalue().decode("utf-8"))
     assert payload["decision"]["status"] == "allow"
     assert subject in fake.buffer.getvalue().decode("utf-8")
+
+
+# --- observe subcommand -----------------------------------------------------
+
+
+def _git_env() -> dict[str, str]:
+    import os
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    return env
+
+
+def test_observe_cli_output_feeds_evaluate(tmp_path: Path, capsys) -> None:
+    """observe が書いた observation.json を evaluate がそのまま受理する。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+
+    assert main(
+        [
+            "observe", "--repo", str(repo), "--subject", "repo:x@head",
+            "--out", str(observation),
+        ]
+    ) == 0
+    payload = json.loads(observation.read_text(encoding="utf-8"))
+    assert payload["schema"] == "ai-ratchet-gate.observation/v1"
+    assert payload["adapter_id"] == "git.tracked_ignored"
+    assert [f["subject_key"] for f in payload["findings"]] == ["generated.txt"]
+
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "git.tracked_ignored",
+                "adapter_version": "1",
+                "subject": "repo:x@head",
+                "policy": "new_only",
+                "finding_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    code = main(
+        [
+            "evaluate", "--observation", str(observation), "--baseline",
+            str(baseline), "--expected-subject", "repo:x@head",
+        ]
+    )
+    assert code == 1
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["decision"]["new"] == [payload["findings"][0]["finding_id"]]
+
+
+def test_observe_cli_rejects_out_inside_inspected_repo(tmp_path: Path, capsys) -> None:
+    """--out が検査対象repo内 (tracked fileの上書き面) を指したら書込まず停止する。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=_git_env(), check=True)
+    target = repo / ".gitignore"
+    target.write_text("keep\n", encoding="utf-8")
+
+    code = main(
+        ["observe", "--repo", str(repo), "--subject", "repo:x@head",
+         "--out", str(target)]
+    )
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "tool_error"
+    assert "observation_out_inside_repo" in payload["error"]
+    assert target.read_text(encoding="utf-8") == "keep\n"  # 上書きしていない
+
+
+def test_observe_cli_out_suppresses_stdout_findings(tmp_path: Path, capsys) -> None:
+    """--out 指定時は stdout へ observation JSON を流さない (CI logへのpath漏洩防止)。"""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    out = tmp_path / "observation.json"
+
+    assert main(
+        ["observe", "--repo", str(repo), "--subject", "repo:x@head",
+         "--out", str(out)]
+    ) == 0
+    stdout = capsys.readouterr().out
+    assert "generated.txt" not in stdout
+    assert "schema" not in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["findings"]
+
+
+def test_observe_cli_rejects_observation_exceeding_evaluate_limit(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """evaluate が受理できないサイズの observation を成功として出さない。"""
+    import subprocess
+
+    from ai_ratchet_gate import cli as cli_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / ".gitignore").write_text("generated.txt\n", encoding="utf-8")
+    (repo / "generated.txt").write_text("x", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", ".gitignore", "generated.txt"],
+        cwd=repo, env=env, check=True,
+    )
+    monkeypatch.setattr(cli_module, "MAX_JSON_BYTES", 64)
+
+    code = main(["observe", "--repo", str(repo), "--subject", "repo:x@head"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert "observation_too_large" in payload["error"]
+
+
+def test_observe_cli_fails_closed_outside_git_repo(tmp_path: Path, capsys) -> None:
+    code = main(["observe", "--repo", str(tmp_path), "--subject", "repo:x@head"])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "tool_error"
+
+
+def test_observe_cli_rejects_empty_subject(tmp_path: Path, capsys) -> None:
+    code = main(["observe", "--repo", str(tmp_path), "--subject", ""])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "tool_error"

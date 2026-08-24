@@ -36,8 +36,11 @@ legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を�
 
 ## データの流れ
 
-1. CLIが対象リポジトリでgitの標準コマンドを実行する。
+1. CLIが組み込みadapter（`git.tracked_ignored`）経由でgitの標準コマンドを実行する。
+   legacy入口は互換用`exclude_standard` profile、汎用入口（`observe`）は`.gitignore`だけを見る
+   再現可能な`repo_only` profileを使う。
 2. Gitで追跡済みかつignore対象のパスを、NUL区切りのUTF-8として受け取る。
+   UTF-8として読めないパスはfail-closedで停止する。
 3. baselineのパス集合と比較する。
 4. 新規パスがなければ成功し、あれば修復案を表示して失敗する。
 5. 明示されたbaseline更新時だけ、baselineファイルを書き換える。

@@ -245,6 +245,24 @@ def test_adapter_ignores_info_exclude(tmp_path) -> None:
     assert keys == {"generated.txt"}
 
 
+def test_adapter_deduplicates_multi_stage_paths(tmp_path, monkeypatch) -> None:
+    """merge未解決indexでは同一パスがstageごとに重複する。findingへは1件に潰す。"""
+    import subprocess
+
+    from ai_ratchet_gate.adapters import tracked_ignored
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args, 0, stdout=b"dup.log\0dup.log\0dup.log\0", stderr=b""
+        )
+
+    monkeypatch.setattr(tracked_ignored.subprocess, "run", fake_run)
+
+    observation = TrackedIgnoredAdapter().observe(ScanContext(tmp_path, "repo:test"))
+
+    assert [item.subject_key for item in observation.findings] == ["dup.log"]
+
+
 def test_adapter_maps_timeout_expired_to_ratchet_error(tmp_path, monkeypatch) -> None:
     """全平台で TimeoutExpired → adapter_observation_timeout を保証する。"""
     import subprocess

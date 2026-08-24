@@ -26,6 +26,8 @@ __all__ = [
     "Finding",
     "Observation",
     "RatchetError",
+    "ScanContext",
+    "TrackedIgnoredAdapter",
     "build_receipt",
     "evaluate",
 ]
