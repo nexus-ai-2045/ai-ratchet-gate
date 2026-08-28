@@ -11,6 +11,9 @@
   `skill_present` / `skill_allowed_tool` / `skill_scripts_digest`を独立軸のFindingとして出す。
   `observe --adapter skill.provenance`でopt-in。既定の`git.tracked_ignored`とlegacy CLIは維持
 - 脅威モデル回帰: label入替、path spoof、symlink、waiverが他軸を相殺しないこと
+- 運用経路回帰: empty skills root、scripts追加、observe→baseline→evaluate→receipt、
+  skills root欠落のfail-closed、他adapter baselineによるidentity偽装拒否
+- OPERATIONSへ`skill.provenance`の導入・日常・ロールバック手順を追記
 
 - 期限付きwaiver schema（`ai-ratchet-gate.waivers/v1`）と`evaluate --waiver`。baseline（grandfather）と
   分離し、finding ID・observation digest・review binding・有効期限へ束縛する。追加・延長・scope変更の

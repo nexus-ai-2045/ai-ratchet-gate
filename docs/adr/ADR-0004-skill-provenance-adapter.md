@@ -95,6 +95,6 @@ schemaの判定意味変更、merge / release / 公開は人間レビュー必�
 
 ## Next Actions
 
-1. `SkillProvenanceAdapter`とCLI opt-inを実装する。
-2. grandfather / 新規skill / tool拡大 / scripts改変 / 観測失敗 / 軸非相殺のテストを追加する。
-3. 脅威モデルの安価なゲーム（label入替、path spoof、baselineとwaiverの混同）を回帰する。
+1. ~~`SkillProvenanceAdapter`とCLI opt-inを実装する。~~（実装済み）
+2. ~~grandfather / 新規skill / tool拡大 / scripts改変 / 観測失敗 / 軸非相殺のテストを追加する。~~（実装済み）
+3. ~~脅威モデルの安価なゲーム（label入替、path spoof、baselineとwaiverの混同）を回帰する。~~（実装済み）
