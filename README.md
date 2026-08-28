@@ -59,6 +59,9 @@ tool権限、agent設定、evalなどへ適用できます。Hermes Agentなど�
 - baselineにない新規の矛盾を検出してcommit前に停止する
 - 解消済みの項目を示し、baselineを縮める方向の改善を妨げない
 - 日本語を含むパスを安全に扱い、検査不能時はfail-closedで停止する
+- solution-knowledgeのload / compose / resolveで、検証済み解法を決定論的に選択して返す
+  （対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /
+  [ADR-0003](docs/adr/ADR-0003-solution-knowledge-propagation.md)）
 
 ## なぜ要るか
 
