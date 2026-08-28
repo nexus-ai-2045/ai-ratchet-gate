@@ -699,7 +699,6 @@ def test_allowed_tools_space_before_colon_is_parsed(tmp_path: Path) -> None:
 
 
 def test_unreadable_scripts_subtree_fails_closed(tmp_path: Path) -> None:
-    import os
     import stat
 
     _write_skill(
@@ -710,6 +709,13 @@ def test_unreadable_scripts_subtree_fails_closed(tmp_path: Path) -> None:
     (hidden / "secret.sh").write_text("echo secret", encoding="utf-8")
     hidden.chmod(0)
     try:
+        try:
+            list(hidden.iterdir())
+        except OSError:
+            pass
+        else:
+            # Windows 等では chmod(0) しても列挙できる環境がある
+            pytest.skip("directory permission denial unavailable")
         with pytest.raises(RatchetError, match="skill_scripts_enumeration_failed"):
             SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
     finally:
@@ -733,22 +739,21 @@ def test_skills_root_symlink_rejected_before_resolve(tmp_path: Path) -> None:
 
 
 def test_delimiter_in_skill_or_tool_rejected(tmp_path: Path) -> None:
-    bad_skill = tmp_path / "skills" / "a::b"
-    bad_skill.mkdir(parents=True)
-    (bad_skill / "SKILL.md").write_text(
-        "---\nname: ab\ndescription: x\nallowed-tools: Read\n---\n",
-        encoding="utf-8",
+    from ai_ratchet_gate.adapters.skill_provenance import (
+        _parse_allowed_tools,
+        _reject_identity_delimiters,
     )
+
     with pytest.raises(RatchetError, match="invalid_skill_path"):
-        SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
+        _reject_identity_delimiters("skills/a::b")
+    with pytest.raises(RatchetError, match="invalid_skill_path"):
+        _reject_identity_delimiters("scripts/x@y.sh")
+    with pytest.raises(RatchetError, match="skill_frontmatter_invalid"):
+        _parse_allowed_tools("allowed-tools: Bash(a::b)\n")
 
-    good = tmp_path / "skills" / "plain"
-    # clean previous broken tree for second case
-    import shutil
-
-    shutil.rmtree(tmp_path / "skills")
-    good.mkdir(parents=True)
-    (good / "SKILL.md").write_text(
+    # filesystem 上の通常skillでも tool token の :: は fail-closed
+    _write_skill(tmp_path, "plain", allowed_tools="Read")
+    (tmp_path / "skills" / "plain" / "SKILL.md").write_text(
         "---\nname: plain\ndescription: x\nallowed-tools: Bash(a::b)\n---\n",
         encoding="utf-8",
     )

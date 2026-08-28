@@ -49,6 +49,12 @@ def _validate_relative_root(root: str) -> str:
     return text
 
 
+def _reject_identity_delimiters(text: str) -> None:
+    """subject_key 区切り子 (:: / @) を含む成分を拒否する。"""
+    if "::" in text or "@" in text:
+        raise RatchetError("invalid_skill_path")
+
+
 def _repo_relative(root: Path, path: Path) -> str:
     try:
         relative = path.resolve(strict=True).relative_to(root.resolve(strict=True))
@@ -57,9 +63,7 @@ def _repo_relative(root: Path, path: Path) -> str:
     text = relative.as_posix()
     if text.startswith("/") or any(part in {"", ".", ".."} for part in text.split("/")):
         raise RatchetError("invalid_skill_path")
-    if "::" in text or "@" in text:
-        # subject_key 区切り子との衝突を静かに同一視しない
-        raise RatchetError("invalid_skill_path")
+    _reject_identity_delimiters(text)
     return _nfc(text)
 
 
@@ -189,8 +193,7 @@ def _list_executable_assets(scripts_dir: Path) -> tuple[tuple[str, str], ...]:
         rel = path.relative_to(scripts_dir).as_posix()
         if any(part in {"", ".", ".."} for part in rel.split("/")):
             raise RatchetError("invalid_skill_path")
-        if "@" in rel or "::" in rel:
-            raise RatchetError("invalid_skill_path")
+        _reject_identity_delimiters(rel)
         entries.append((_nfc(rel), _file_digest(path)))
     return tuple(entries)
 
