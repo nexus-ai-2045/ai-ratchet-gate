@@ -216,12 +216,37 @@ def test_verifier_exception_is_normalized_fail_closed():
         run(knowledge(), {"bad": True}, resolvers={}, verifier=explode)
 
 
+def test_verifier_mutation_before_exception_is_detected():
+    target = {"bad": True}
+
+    def mutate_then_explode(state, _problem):
+        state["touched"] = True
+        raise RuntimeError("boom")
+
+    with pytest.raises(RatchetError, match="verifier_mutated_target"):
+        run(knowledge(), target, resolvers={}, verifier=mutate_then_explode)
+
+
 def test_snapshot_exception_is_normalized_fail_closed():
     def explode(_target):
         raise RuntimeError("boom")
 
     with pytest.raises(RatchetError, match="snapshot_failed"):
         run(knowledge(), {"bad": True}, resolvers={}, snapshot=explode)
+
+
+def test_snapshot_exception_during_verifier_state_check_is_normalized():
+    calls = 0
+
+    def flaky_snapshot(target):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("boom")
+        return sha(target)
+
+    with pytest.raises(RatchetError, match="snapshot_failed"):
+        run(knowledge(), {"bad": True}, resolvers={}, snapshot=flaky_snapshot)
 
 
 def test_invalid_knowledge_context_is_rejected_before_mutation():
