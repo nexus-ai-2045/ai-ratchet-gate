@@ -12,4 +12,5 @@ include .pre-commit-hooks.yaml
 exclude docs/adr/ADR-0002-review-knowledge-propagation.md
 exclude docs/adr/ADR-0003-solution-knowledge-propagation.md
 exclude docs/adr/ADR-0006-fact-output-enforcement.md
+exclude docs/adr/ADR-0004-solution-harness-loop.md
 recursive-include scripts *.py
