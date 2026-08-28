@@ -25,7 +25,7 @@
 
 - `model`: Finding、Observation、Decisionのversioned schema
 - `adapters`: 対象をread-only観測し、安定IDへ正規化するbuilt-in adapter
-  （`git.tracked_ignored`、`skill.provenance`）
+  （`git.tracked_ignored`、`skills.provenance`）
 - `engine`: adapterに依存しない集合比較と軸別判定
 - `waiver`: 期限付き例外のschema検証と適用判定（承認はしない）
 - JSON baseline: 既存負債のreviewed snapshot（grandfatherされたfinding ID集合）
@@ -40,15 +40,16 @@ legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を�
 
 ## データの流れ
 
-1. CLIが組み込みadapter（既定`git.tracked_ignored`、opt-inで`skill.provenance`）経由で
+1. CLIが組み込みadapter（既定`git.tracked_ignored`、opt-inで`skills.provenance`）経由で
    対象をread-only観測する。
    legacy入口は互換用`exclude_standard` profile、汎用入口（`observe`）のgit adapterは
    `.gitignore`だけを見る再現可能な`repo_only` profileを使う。
-   `skill.provenance`は明示skills root（既定`skills/`）配下の`SKILL.md`とsibling
-   `scripts/`だけを列挙する。
+   `skills.provenance`は`.agents/skills/`と`skills/`（存在するrootだけ）配下の
+   `SKILL.md`とsibling `scripts/`を列挙する。
 2. adapterがFindingを安定IDへ正規化する。Gitでは追跡済みかつignore対象のパスを、
    NUL区切りのUTF-8として受け取る。UTF-8として読めないパスはfail-closedで停止する。
-   skillでは`skill_present` / `skill_allowed_tool` / `skill_scripts_digest`を独立軸とする。
+   skillでは`new_skill` / `allowed_tools_token` / `unrestricted_tools` /
+   `executable_asset`を独立軸とし、内容digestはevidenceにだけ載せる。
 3. baselineのfinding ID集合と比較する。
 4. 新規findingがなければ成功し、あれば修復案を表示して失敗する。
 5. 明示されたbaseline更新時だけ、baselineファイルを書き換える。

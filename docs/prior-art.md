@@ -38,8 +38,9 @@ critical propertyをruntimeで監視し、必要な場合だけ出力を補正�
 
 ソフトウェア供給鎖のprovenanceやartifact digest（SLSAやin-totoが扱う概念）を、skillを
 内容固定されたartifactとして扱う語彙として借りる。本ツールはそれらのruntime、attestation
-形式、署名検証を実装しない。`skill.provenance`は`scripts/` treeの内容digestと、
-`allowed-tools`のcapability expansionを決定論的Findingへ正規化するだけである。
+形式、署名検証を実装しない。`skills.provenance`は内容digestをFindingのevidenceへ載せ、
+`allowed-tools`のcapability expansionとexecutable assetの追加を決定論的Findingへ正規化する。
+digest不一致そのものはdeny軸にしない。
 
 ## Receding-horizon / MPC-inspired operation
 

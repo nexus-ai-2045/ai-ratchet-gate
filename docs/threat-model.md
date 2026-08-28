@@ -3,8 +3,9 @@
 ## 守る対象
 
 - `tracked ∧ ignored` の矛盾を増やさないという不変条件
-- skill provenance（新規SKILL.md、`allowed-tools`拡大、companion `scripts/` digest変更）を
-  増やさないという不変条件
+- skill provenance（新規SKILL.md、`allowed-tools`拡大、無制限tools、executable asset追加）を
+  増やさないという不変条件。内容digestはevidenceであり、本文のみ／既存script内容のみの
+  変更ではfinding IDが変わらない
 - baseline変更を差分としてレビューできること
 - 検査不能を成功として扱わないこと
 - findingの安定した同一性と、軸ごとの新規悪化を相殺しないこと
@@ -34,8 +35,10 @@
 - baselineにない新規パス／findingをdenyする
 - git実行失敗とbaseline欠落ではfail-closedにする
 - skills root欠落、symlink、曖昧frontmatterではfail-closedにする
+  （両方の既定rootが無い場合はfinding 0件として観測する）
 - skillの安定キーはrepo相対pathとし、declared nameへの静かな合流を避ける
-- 一軸のwaiverや改善で他軸（例: tool拡大とscripts改変）を相殺しない
+- 内容digestをdeny軸にしない（evidenceのみ）
+- 一軸のwaiverや改善で他軸（例: tool拡大とexecutable追加）を相殺しない
 - baseline更新とskipを人間レビュー対象として運用文書に残す
 - 未知schema、identity不一致、重複IDをfail-closedにする。期限付きwaiverはbaselineと分離し、
   レビュー済みファイルだけを消費する。追加・延長・scope変更の自動承認はしない

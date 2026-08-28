@@ -6,14 +6,17 @@
 
 ### 追加
 
-- 第二built-in adapter `skill.provenance`（[ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）。
-  Agent Skillsの`SKILL.md` YAML frontmatterとsibling `scripts/`をread-only観測し、
-  `skill_present` / `skill_allowed_tool` / `skill_scripts_digest`を独立軸のFindingとして出す。
-  `observe --adapter skill.provenance`でopt-in。既定の`git.tracked_ignored`とlegacy CLIは維持
-- 脅威モデル回帰: label入替、path spoof、symlink、waiverが他軸を相殺しないこと
-- 運用経路回帰: empty skills root、scripts追加、observe→baseline→evaluate→receipt、
-  skills root欠落のfail-closed、他adapter baselineによるidentity偽装拒否
-- OPERATIONSへ`skill.provenance`の導入・日常・ロールバック手順を追記
+- 第二built-in adapter `skills.provenance`（[ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）。
+  Agent Skillsの`SKILL.md` YAML frontmatterとsibling `scripts/`を、`.agents/skills/`と
+  `skills/`（存在するrootだけ）からread-only観測し、
+  `new_skill` / `allowed_tools_token` / `unrestricted_tools` / `executable_asset`を
+  独立軸のFindingとして出す。内容digestはevidence（本文のみ編集ではdenyしない）。
+  `observe --adapter skills.provenance`でopt-in。既定の`git.tracked_ignored`とlegacy CLIは維持
+- 脅威モデル回帰: label入替、path spoof、symlink、waiverが他軸を相殺しないこと、
+  他adapter baselineによるidentity偽装拒否
+- 運用経路回帰: 両root欠落、executable追加、本文のみ非deny、observe→baseline→evaluate→receipt
+- OPERATIONSへ`skills.provenance`の導入・日常・ロールバック手順を追記
+- ADR indexにADR-0001〜0004を掲載
 
 - 期限付きwaiver schema（`ai-ratchet-gate.waivers/v1`）と`evaluate --waiver`。baseline（grandfather）と
   分離し、finding ID・observation digest・review binding・有効期限へ束縛する。追加・延長・scope変更の
@@ -49,7 +52,7 @@
 - 観測不能時のexit codeは`1`から`2`へ変更。hookで`!= 0`判定している利用者には影響しない
 - 新しい汎用判定は`observe` / `evaluate` subcommandとしてopt-in提供
 - waiver契約は`--waiver`指定時のみ有効。未指定時の既存evaluate挙動は維持
-- `skill.provenance`は`--adapter skill.provenance`指定時のみ有効。未指定時は`git.tracked_ignored`
+- `skills.provenance`は`--adapter skills.provenance`指定時のみ有効。未指定時は`git.tracked_ignored`
 
 ### 安全性
 
@@ -57,7 +60,8 @@
 - baselineとreceiptを同一directoryの一時fileからatomic replaceし、途中書込みを公開しない。既存modeを保持し、新規fileは`0644`
 - symlink作成能力がないWindowsでは、symlink専用回帰テストを環境能力skipとして分類
 - 期限切れ・scope外・review binding不一致・未知schemaのwaiverはfail-closed。一軸のwaiverで他軸の新規悪化を相殺しない
-- skills root欠落、symlink、曖昧frontmatter、path spoofはfail-closed。skill安定キーはrepo相対path
+- skills rootのsymlink、曖昧frontmatter、path spoofはfail-closed。skill安定キーはrepo相対path
+- 内容digestはevidenceのみ。本文のみ／既存script内容のみの変更ではfinding IDが不変
 
 ## [0.1.1] - 2026-08-19
 
