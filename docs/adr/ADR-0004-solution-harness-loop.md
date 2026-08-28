@@ -17,11 +17,11 @@ ADR-0003で、既知問題はcentral/localの解決知識からresolverを選択
 ```text
 Resolve knowledge
   -> Snapshot(before)
-  -> Pre-Verify
+  -> Pre-Verify + state-preservation check
   -> exact resolver_id + resolver_version lookup
   -> Apply (caller-provided resolver)
   -> Snapshot(after)
-  -> Post-Verify
+  -> Post-Verify + state-preservation check
   -> Resolution Receipt
 ```
 
@@ -37,19 +37,24 @@ knowledgeが指す`resolver_id`と`resolver_version`の完全一致だけを実�
 
 resolver callbackが例外なく終了しても、post-verifierが`resolved=true`を返すまで成功としない。失敗時は`verification_failed`としてreceiptに残す。
 
-### 4. 未知問題は変更しない
+### 4. Verifierはstate-preservingでなければならない
+
+pre/post verifierの前後でtarget state digestを比較する。verifierが対象を変更した場合は`verifier_mutated_target`でfail-closedにし、検査と修復の責務を混ぜない。verifierが`Verification`契約以外を返した場合も偽成功させない。
+
+### 5. 未知問題は変更しない
 
 `unknown / no_verified_solution`はresolverを実行せず、`human_resolution_required`として返す。未知問題への推測修正をしない。
 
-### 5. Receiptをbefore/afterと検証証拠へ結ぶ
+### 6. Receiptをbefore/afterと検証証拠へ結ぶ
 
 receiptは少なくともsubject、problem key、knowledge ID、resolver identity、before/after digest、verifier identity/evidence、statusを持ち、canonical JSONの自己hashを付ける。
 
-### 6. 信頼境界
+### 7. 信頼境界
 
-- Resolver callback、snapshot、verifierは呼び出し側Harnessの信頼済み入力である。
+- Resolver callback、snapshot、verifierは呼び出し側Harnessが明示登録する入力だが、verifierのstate-preserving性はdigestで機械検査する。
 - 本packageはfilesystem、GitHub mutation、secret、settings変更のbuilt-in resolverを持たない。
 - 実運用ではresolverを隔離worktree等へ適用し、post-verify成功後だけ上位orchestratorがcommit/push/PR更新を行う。
+- resolverが途中mutation後に失敗した場合、上位層は隔離環境を破棄する。Harnessは汎用rollbackを推測実装しない。
 - receiptは真正性証明ではない。必要ならCI attestation等の外層へ結ぶ。
 
 ## MPC/FDE上の固定軸
@@ -70,6 +75,7 @@ MVPでは次の5軸だけを機械契約にする。
 - pre-verify済みtargetへresolverを再適用しない
 - unknown problemを変更しない
 - resolver未登録/重複/例外はfail-closed
+- verifier mutation/不正resultはfail-closed
 - post-verify失敗を成功と報告しない
 - receiptがbefore/afterとverifier evidenceを固定する
 - Python 3.11/3.13、Windows/Linuxの既存CIとrelease artifact検査がGreen
