@@ -49,13 +49,14 @@ def _write_skill(
         tools_block = f"allowed-tools: {allowed_tools}\n"
     else:
         raise AssertionError("unsupported allowed_tools fixture")
+    body_text = body if body is not None else f"# {name}\n"
     text = (
         "---\n"
         f"name: {name}\n"
         f"description: fixture skill {name}\n"
         f"{tools_block}"
         "---\n"
-        f"{body if body is not None else f'# {name}\n'}"
+        f"{body_text}"
     )
     (skill_dir / "SKILL.md").write_text(text, encoding="utf-8")
     if scripts is not None:
