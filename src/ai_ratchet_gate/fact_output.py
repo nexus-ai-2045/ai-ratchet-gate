@@ -24,7 +24,7 @@ FACT_EVIDENCE_SCHEMA = "ai-ratchet-gate.fact-evidence/v1"
 MAX_CLAIMS = 1_000
 MAX_LABELS = 64
 MAX_SOURCES = 4_096
-MAX_STRING_BYTES = 16 * 1024
+MAX_STRING_BYTES = 4_096
 _SOURCE_REQUIREMENTS = frozenset({"required", "optional", "forbidden"})
 _CLAIM_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
@@ -42,7 +42,7 @@ def canonical_sha256(value: object) -> str:
 
 
 def _string(value: object, name: str) -> str:
-    if type(value) is not str or not value or "\x00" in value:
+    if type(value) is not str or not value or not value.strip() or "\x00" in value:
         raise RatchetError(f"invalid_{name}")
     try:
         encoded = value.encode("utf-8")
