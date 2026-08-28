@@ -3,6 +3,8 @@
 ## 守る対象
 
 - `tracked ∧ ignored` の矛盾を増やさないという不変条件
+- skill provenance（新規SKILL.md、`allowed-tools`拡大、companion `scripts/` digest変更）を
+  増やさないという不変条件
 - baseline変更を差分としてレビューできること
 - 検査不能を成功として扱わないこと
 - findingの安定した同一性と、軸ごとの新規悪化を相殺しないこと
@@ -14,6 +16,9 @@
 - 追跡済みファイルへ後から追加されたignoreルール
 - 日本語など非ASCII文字を含むパス
 - git実行不能、対象パス不正、baseline欠落
+- skills root欠落、列挙不能、symlink／path traversalによるrepo外参照
+- `SKILL.md` frontmatter欠落や曖昧な`allowed-tools`解釈
+- rule_idやsubject_keyの入替によるfinding偽装
 - baselineの意図しない拡大やskipの常用
 - schema downgrade、未知schema、baseline改ざん
 - 期限切れ、scope不一致、再利用されたwaiver
@@ -26,8 +31,11 @@
 ## 対応
 
 - gitのNUL区切り出力を使い、パスの曖昧な分割を避ける
-- baselineにない新規パスをdenyする
+- baselineにない新規パス／findingをdenyする
 - git実行失敗とbaseline欠落ではfail-closedにする
+- skills root欠落、symlink、曖昧frontmatterではfail-closedにする
+- skillの安定キーはrepo相対pathとし、declared nameへの静かな合流を避ける
+- 一軸のwaiverや改善で他軸（例: tool拡大とscripts改変）を相殺しない
 - baseline更新とskipを人間レビュー対象として運用文書に残す
 - 未知schema、identity不一致、重複IDをfail-closedにする。期限付きwaiverはbaselineと分離し、
   レビュー済みファイルだけを消費する。追加・延長・scope変更の自動承認はしない
