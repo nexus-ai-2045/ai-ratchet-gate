@@ -7,4 +7,6 @@ include SECURITY.md
 include ai_ratchet_gate.py
 recursive-include .ai-ratchet-gate *.txt
 recursive-include docs *.md
+exclude docs/adr/ADR-0002-review-knowledge-propagation.md
+exclude docs/adr/ADR-0003-solution-knowledge-propagation.md
 recursive-include scripts *.py
