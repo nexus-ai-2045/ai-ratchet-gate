@@ -49,7 +49,8 @@ adapter化、receipt、waiver検証（Next Action 1–4）に加え、第二adap
 - skills: 出所、digest、許可されたtool／権限宣言の新規拡大（実装済み: `skills.provenance`。
   Agent Skillsの`SKILL.md` + sibling `scripts/` を `.agents/skills/` と `skills/` から
   read-only観測し、`new_skill` / `allowed_tools_token` / `unrestricted_tools` /
-  `executable_asset`を独立軸でdenyする。内容digestはevidenceであり、本文のみの編集ではdenyしない）
+  `executable_asset`を独立軸でdenyする。`scripts/` payload digest変更はdeny。
+  `SKILL.md`本文のみの編集ではdenyしない）
 - agent設定: model、tool、外部送信先、書込権限の新規追加
 - eval: 固定fixtureに対する既知成功ケースの退行
 - repository: secret候補、生成物混入、個人pathなどの増分違反

@@ -10,11 +10,13 @@
   Agent Skillsの`SKILL.md` YAML frontmatterとsibling `scripts/`を、`.agents/skills/`と
   `skills/`（存在するrootだけ）からread-only観測し、
   `new_skill` / `allowed_tools_token` / `unrestricted_tools` / `executable_asset`を
-  独立軸のFindingとして出す。内容digestはevidence（本文のみ編集ではdenyしない）。
+  独立軸のFindingとして出す。`scripts/` payload digestはdeny軸。
+  `SKILL.md`本文のみの編集ではdenyしない。
   `observe --adapter skills.provenance`でopt-in。既定の`git.tracked_ignored`とlegacy CLIは維持
 - 脅威モデル回帰: label入替、path spoof、symlink、waiverが他軸を相殺しないこと、
   他adapter baselineによるidentity偽装拒否
-- 運用経路回帰: 両root欠落、executable追加、本文のみ非deny、observe→baseline→evaluate→receipt
+- 運用経路回帰: 両root欠落、scripts新規/内容変更deny、grandfather digest allow、
+  軸非相殺、本文のみ非deny、observe→baseline→evaluate→receipt
 - OPERATIONSへ`skills.provenance`の導入・日常・ロールバック手順を追記
 - ADR indexにADR-0001〜0004を掲載
 
@@ -61,7 +63,7 @@
 - symlink作成能力がないWindowsでは、symlink専用回帰テストを環境能力skipとして分類
 - 期限切れ・scope外・review binding不一致・未知schemaのwaiverはfail-closed。一軸のwaiverで他軸の新規悪化を相殺しない
 - skills rootのsymlink、曖昧frontmatter、path spoofはfail-closed。skill安定キーはrepo相対path
-- 内容digestはevidenceのみ。本文のみ／既存script内容のみの変更ではfinding IDが不変
+- `scripts/` payload digestは`executable_asset`のdeny軸。`SKILL.md`本文のみはevidence（ID不変）
 
 ## [0.1.1] - 2026-08-19
 

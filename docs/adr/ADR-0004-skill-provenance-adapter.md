@@ -32,15 +32,16 @@ v1の入力はAgent Skillsの`SKILL.md`（YAML frontmatter）と、sibling `scri
 - どちらのskills rootも無い場合はfinding 0件のobservationとする。存在するrootの列挙不能、
   symlink、repo外脱出、曖昧frontmatterはfail-closed。
 - Findingは次の独立軸だけを出す。総合点やnet-zero scoreは作らない。
-- **内容digestはevidenceでありdeny軸ではない。** `SKILL.md`本文だけ、または既存
-  `scripts/`ファイル内容だけの変更ではfinding IDが変わらず、new-onlyではdenyしない。
+- **`SKILL.md`本文だけの変更はevidenceのみ**（`new_skill`等のfinding IDは不変でdenyしない）。
+- **`scripts/`のpayload digestはdeny軸**である。companion scriptの新規追加または内容変更は
+  `executable_asset`の新しいfinding IDとなり、baselineに無ければdenyする。
 
 | rule_id | 意味 | subject_key |
 |---|---|---|
 | `new_skill` | 観測されたskill | skill directoryのrepo相対path |
 | `allowed_tools_token` | 宣言された個別tool | `{skill_path}::{tool_token}` |
 | `unrestricted_tools` | `allowed-tools`欠落または空 | skill directoryのrepo相対path |
-| `executable_asset` | companion `scripts/`配下の通常ファイル | `{skill_path}/scripts/{rel}` |
+| `executable_asset` | companion `scripts/`ファイルのpath+内容digest | `{skill_path}/scripts/{rel}@{digest}` |
 
 - `subject_kind`は常に`skill`。
 - 安定キーは**declared `name`ではなくrepo相対path**とする。renameは新しいidentityになる。
@@ -59,7 +60,7 @@ v1の入力はAgent Skillsの`SKILL.md`（YAML frontmatter）と、sibling `scri
 - skillの生成・改善・実行
 - 第三者plugin adapterの実行
 - LLMをdeny判定の主根拠にすること
-- digest不一致そのものをdeny軸にすること
+- `scripts/` payload digestのdeny軸を外して内容改変を見逃すこと
 - 軸を単一スコアへ潰すこと
 - baseline拡大やwaiver承認の自動化
 - GitHub mutation、merge、release、公開、秘密のreceipt埋め込み
@@ -74,26 +75,25 @@ schemaの判定意味変更、merge / release / 公開は人間レビュー必�
 ### 肯定的
 
 - 第二の独立adapterを、既存git adapterと同じcore契約で検証できる。
-- 新規skill、権限拡大、無制限tools、executable asset追加を別findingとして止める。
-- 本文のみの編集やscript内容改変で誤denyしない。
+- 新規skill、権限拡大、無制限tools、scripts payload改変を別findingとして止める。
+- `SKILL.md`本文のみの編集では誤denyしない。
 
 ### 否定的
 
 - path基準のため、skill directoryのrenameは新規悪化として見える。
-- `scripts/`への新規ファイル追加はdenyするが、既存ファイルの内容改変は検知しない
-  （evidence digestは変わるがfinding IDは不変）。
+- script内容の意図的更新もbaseline差分（またはwaiver）レビューが必要になる。
 
 ### 検討した代替案
 
-- **scripts tree digestをdeny軸にする**: 内容改変を止められるが、本文／script編集の
-  運用ノイズが大きく、本v1の「digestはevidence」方針に反する。
+- **scripts digestをevidenceだけにする**: 内容差し替えを見逃し、locked NA5軸（payload digest）
+  に反する。
 - **declared nameを主キーにする**: 同名skillのpath差替えを静かに同一視し得る。
 - **OPAで権限policyを書く**: 新runtimeを持ち込み、ADR-0001に反する。
 
 ## Next Actions
 
 1. ~~`SkillProvenanceAdapter`とCLI opt-inを実装する。~~（実装済み）
-2. ~~grandfather / 新規skill / tool拡大 / unrestricted / executable追加 / 本文のみ非deny /
-   観測失敗 / 軸非相殺のテストを追加する。~~（実装済み）
+2. ~~grandfather / 新規skill / tool拡大 / unrestricted / scripts digest（新規・変更）/
+   本文のみ非deny / 観測失敗 / 軸非相殺のテストを追加する。~~（実装済み）
 3. ~~脅威モデルの安価なゲーム（label入替、path spoof、baselineとwaiverの混同）を回帰する。~~
    （実装済み）

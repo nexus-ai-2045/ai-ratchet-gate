@@ -3,11 +3,13 @@
 v1入力は SKILL.md の YAML frontmatter と sibling scripts/ 配下の通常ファイル。
 既定で `.agents/skills/` と `skills/` を「存在する場合だけ」走査する。
 
-Finding軸（digestは evidence であり deny 軸ではない）:
+Finding軸:
 - new_skill
 - allowed_tools_token
 - unrestricted_tools
-- executable_asset
+- executable_asset（scripts/ 各ファイルの path+content digest。内容変更は deny 軸）
+
+SKILL.md 本文だけの変更は evidence のみ（finding ID は不変）。
 """
 
 from __future__ import annotations
@@ -123,9 +125,9 @@ def _evidence(*parts: str) -> str:
 
 
 def _list_executable_assets(scripts_dir: Path) -> tuple[tuple[str, str], ...]:
-    """scripts/ 配下の通常ファイルを (repo相対ではない scripts相対path, content digest) で返す。
+    """scripts/ 配下の通常ファイルを (scripts相対path, content digest) で返す。
 
-    finding ID は path だけに束縛し、digest は evidence に載せる。
+    finding ID には path と content digest の両方を束縛し、内容変更を deny 軸にする。
     """
     if not scripts_dir.exists():
         return ()
@@ -267,7 +269,8 @@ class SkillProvenanceAdapter:
             for rel, content_digest in _list_executable_assets(
                 skill_dir / SCRIPTS_DIRNAME
             ):
-                asset_key = f"{skill_key}/scripts/{rel}"
+                # path@digest: 新規ファイルも内容変更も new finding になる
+                asset_key = f"{skill_key}/scripts/{rel}@{content_digest}"
                 findings.append(
                     Finding.create(
                         adapter_id=self.adapter_id,
@@ -275,7 +278,7 @@ class SkillProvenanceAdapter:
                         rule_id="executable_asset",
                         subject_kind="skill",
                         subject_key=asset_key,
-                        message="companion scripts asset observed",
+                        message="companion scripts payload digest observed",
                         evidence_sha256=_evidence(
                             "executable_asset", asset_key, content_digest
                         ),

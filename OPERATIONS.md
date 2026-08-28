@@ -15,9 +15,9 @@ baselineの初回差分を人間が確認してから、commit前の検査また
 
 - 通常検査はread-onlyで実行する
 - 新規矛盾が出たら、生成物は追跡解除し、実装ファイルはignore対象から除外する
-- skill側で新規SKILL.md、`allowed-tools`拡大、無制限tools、`scripts/`へのファイル追加が出たら、
-  意図しない拡大かレビューする。`SKILL.md`本文のみ、または既存script内容のみの変更は
-  finding IDが変わらない（digestはevidence）
+- skill側で新規SKILL.md、`allowed-tools`拡大、無制限tools、`scripts/`の追加・内容変更が出たら、
+  意図しない拡大かレビューする。`SKILL.md`本文のみの変更はfinding IDが変わらない
+  （scripts payload digestはdeny軸）
 - 意図的な例外だけbaseline更新または期限付きwaiverとし、その差分をレビューする
 - skipは緊急回避に限定し、実行理由と出力をレビュー記録へ残す
 - baseline拡大、waiver追加・延長・scope変更、adapterのenforce昇格は自動承認しない

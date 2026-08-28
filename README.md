@@ -65,8 +65,8 @@ tool権限、agent設定、evalなどへ適用できます。Hermes Agentなど�
 - 期限付きwaiver（`evaluate --waiver`）でレビュー済み`waivers/v1`だけを消費する
   （追加・延長・scope変更の自動承認はしない）
 - `skills.provenance`でAgent Skillsの`SKILL.md`とsibling `scripts/`をread-only観測し、
-  新規skill・`allowed-tools`拡大・無制限tools・executable asset追加を独立軸でdenyする
-  （内容digestはevidence。本文のみの編集ではdenyしない。契約は
+  新規skill・`allowed-tools`拡大・無制限tools・scripts payload digest変更を独立軸でdenyする
+  （`SKILL.md`本文のみの編集ではdenyしない。契約は
   [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）
 - solution-knowledgeの`load_knowledge_document` / `compose_knowledge` / `resolve_problem`で、
   検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
