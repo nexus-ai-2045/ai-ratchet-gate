@@ -161,3 +161,71 @@ def test_resolver_exception_fails_closed():
             snapshot=sha,
             verify=verify,
         )
+
+
+def test_pre_verifier_cannot_mutate_target():
+    target = {"bad": True}
+
+    def mutating_verify(state, _problem):
+        state["touched"] = True
+        return Verification.create(
+            resolved=False,
+            verifier_id="demo.mutating-verify",
+            verifier_version="1",
+            evidence_sha256=sha(state),
+        )
+
+    with pytest.raises(RatchetError, match="verifier_mutated_target"):
+        run_resolution_loop(
+            knowledge(),
+            subject="repo:b@abc",
+            target=target,
+            resolvers={},
+            snapshot=sha,
+            verify=mutating_verify,
+        )
+
+
+def test_post_verifier_cannot_mutate_target():
+    target = {"bad": True}
+    calls = 0
+
+    def phase_verify(state, _problem):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            state["touched"] = True
+        return Verification.create(
+            resolved=not state["bad"],
+            verifier_id="demo.phase-verify",
+            verifier_version="1",
+            evidence_sha256=sha(state),
+        )
+
+    binding = ResolverBinding.create(
+        resolver_id="demo.clear-flag",
+        resolver_version="1",
+        apply=lambda state: state.__setitem__("bad", False),
+    )
+    with pytest.raises(RatchetError, match="verifier_mutated_target"):
+        run_resolution_loop(
+            knowledge(),
+            subject="repo:b@abc",
+            target=target,
+            resolvers=build_resolver_registry([binding]),
+            snapshot=sha,
+            verify=phase_verify,
+        )
+
+
+def test_verifier_must_return_verification_contract():
+    target = {"bad": True}
+    with pytest.raises(RatchetError, match="invalid_verification_result"):
+        run_resolution_loop(
+            knowledge(),
+            subject="repo:b@abc",
+            target=target,
+            resolvers={},
+            snapshot=sha,
+            verify=lambda _target, _problem: True,
+        )
