@@ -12,7 +12,7 @@ from ai_ratchet_gate.fact_output import (
     canonical_sha256,
     observe_fact_output,
 )
-from ai_ratchet_gate.fact_output_cli import main as fact_output_main
+from ai_ratchet_gate.fact_output_cli import VALIDATION_SCHEMA, main as fact_output_main
 from ai_ratchet_gate.model import RatchetError
 
 
@@ -89,6 +89,16 @@ def test_missing_source_for_fact_is_deterministic_finding() -> None:
     assert len(first.findings) == 1
     assert first.findings[0].rule_id == "fact-output.source-required"
     assert first.findings[0].finding_id == second.findings[0].finding_id
+
+
+def test_whitespace_source_fails_closed() -> None:
+    with pytest.raises(RatchetError, match="invalid_claim_source"):
+        observe_fact_output(
+            _document(_claim("c1", "fact", "unverified claim", " \t\n")),
+            _policy(),
+            _evidence(),
+            subject="turn:example",
+        )
 
 
 def test_invented_source_is_denied_even_when_source_is_required() -> None:
@@ -202,25 +212,35 @@ def test_policy_can_change_label_vocabulary_without_code_change() -> None:
     assert observation.findings == ()
 
 
+def test_strings_over_common_observation_limit_fail_early() -> None:
+    too_long = "x" * 4097
+    with pytest.raises(RatchetError, match="invalid_subject"):
+        observe_fact_output(
+            _document(_claim("c1", "unknown", "ok", None)),
+            _policy(),
+            _evidence(),
+            subject=too_long,
+        )
+
+
 def test_canonical_digest_is_order_independent_for_object_keys() -> None:
     left = {"schema": FACT_EVIDENCE_SCHEMA, "sources": []}
     right = {"sources": [], "schema": FACT_EVIDENCE_SCHEMA}
     assert canonical_sha256(left) == canonical_sha256(right)
 
 
-def test_cli_returns_one_and_writes_observation_for_policy_violation(
+def test_cli_denial_is_read_only_and_binds_document_digest(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     document = tmp_path / "document.json"
     policy = tmp_path / "policy.json"
     evidence = tmp_path / "evidence.json"
-    output = tmp_path / "observation.json"
-    document.write_text(
-        json.dumps(_document(_claim("c1", "fact", "missing source", None))),
-        encoding="utf-8",
-    )
+    document_value = _document(_claim("c1", "fact", "missing source", None))
+    document.write_text(json.dumps(document_value), encoding="utf-8")
     policy.write_text(json.dumps(_policy()), encoding="utf-8")
     evidence.write_text(json.dumps(_evidence()), encoding="utf-8")
+    before = set(tmp_path.iterdir())
 
     assert fact_output_main(
         [
@@ -228,15 +248,46 @@ def test_cli_returns_one_and_writes_observation_for_policy_violation(
             "--policy", str(policy),
             "--evidence", str(evidence),
             "--subject", "turn:example",
-            "--out", str(output),
         ]
     ) == 1
-    emitted = json.loads(output.read_text(encoding="utf-8"))
-    assert emitted["adapter_id"] == "agent.fact_output"
-    assert len(emitted["findings"]) == 1
+
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["schema"] == VALIDATION_SCHEMA
+    assert emitted["status"] == "deny"
+    assert emitted["document_sha256"] == canonical_sha256(document_value)
+    assert len(emitted["observation"]["findings"]) == 1
+    assert set(tmp_path.iterdir()) == before
 
 
-def test_cli_returns_two_for_duplicate_json_key(tmp_path: Path) -> None:
+def test_cli_allow_binds_exact_document_digest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    document = tmp_path / "document.json"
+    policy = tmp_path / "policy.json"
+    evidence = tmp_path / "evidence.json"
+    document_value = _document(_claim("c1", "fact", "verified", KNOWN_SOURCE))
+    document.write_text(json.dumps(document_value), encoding="utf-8")
+    policy.write_text(json.dumps(_policy()), encoding="utf-8")
+    evidence.write_text(json.dumps(_evidence(KNOWN_SOURCE)), encoding="utf-8")
+
+    assert fact_output_main(
+        [
+            "--document", str(document),
+            "--policy", str(policy),
+            "--evidence", str(evidence),
+            "--subject", "turn:example",
+        ]
+    ) == 0
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["status"] == "allow"
+    assert emitted["document_sha256"] == canonical_sha256(document_value)
+
+
+def test_cli_returns_two_for_duplicate_json_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     document = tmp_path / "document.json"
     policy = tmp_path / "policy.json"
     evidence = tmp_path / "evidence.json"
@@ -255,3 +306,5 @@ def test_cli_returns_two_for_duplicate_json_key(tmp_path: Path) -> None:
             "--subject", "turn:example",
         ]
     ) == 2
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["status"] == "tool_error"
