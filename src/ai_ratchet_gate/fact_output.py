@@ -1,9 +1,9 @@
 """Structured fact-output envelope validator.
 
 This module intentionally does not encode any product-specific label vocabulary.
-A caller supplies a reviewed policy, then the adapter converts semantic violations
-into the common Finding/Observation contract. Malformed or ambiguous input fails
-closed with RatchetError.
+A caller supplies a reviewed policy plus a runtime-produced evidence registry, then
+the adapter converts semantic violations into the common Finding/Observation
+contract. Malformed or ambiguous input fails closed with RatchetError.
 """
 
 from __future__ import annotations
@@ -20,17 +20,25 @@ ADAPTER_ID = "agent.fact_output"
 ADAPTER_VERSION = "1"
 FACT_OUTPUT_SCHEMA = "ai-ratchet-gate.fact-output/v1"
 FACT_OUTPUT_POLICY_SCHEMA = "ai-ratchet-gate.fact-output-policy/v1"
+FACT_EVIDENCE_SCHEMA = "ai-ratchet-gate.fact-evidence/v1"
 MAX_CLAIMS = 1_000
 MAX_LABELS = 64
+MAX_SOURCES = 4_096
 MAX_STRING_BYTES = 16 * 1024
 _SOURCE_REQUIREMENTS = frozenset({"required", "optional", "forbidden"})
 _CLAIM_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def _canonical(value: object) -> bytes:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
+
+
+def canonical_sha256(value: object) -> str:
+    """Return a stable digest for policy/evidence pinning in outer receipts."""
+    return hashlib.sha256(_canonical(value)).hexdigest()
 
 
 def _string(value: object, name: str) -> str:
@@ -86,6 +94,44 @@ class FactOutputPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class EvidenceSource:
+    source_id: str
+    evidence_sha256: str
+
+    @classmethod
+    def from_dict(cls, value: object) -> "EvidenceSource":
+        if not _exact_keys(value, {"id", "evidence_sha256"}):
+            raise RatchetError("invalid_evidence_source")
+        source_id = _string(value["id"], "source_id")
+        evidence_sha256 = _string(value["evidence_sha256"], "evidence_sha256")
+        if _SHA256_RE.fullmatch(evidence_sha256) is None:
+            raise RatchetError("invalid_evidence_sha256")
+        return cls(source_id=source_id, evidence_sha256=evidence_sha256)
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRegistry:
+    sources: dict[str, EvidenceSource]
+
+    @classmethod
+    def from_dict(cls, value: object) -> "EvidenceRegistry":
+        if not _exact_keys(value, {"schema", "sources"}):
+            raise RatchetError("invalid_evidence_registry")
+        if value["schema"] != FACT_EVIDENCE_SCHEMA:
+            raise RatchetError("invalid_evidence_registry_schema")
+        raw_sources = value["sources"]
+        if not isinstance(raw_sources, list) or len(raw_sources) > MAX_SOURCES:
+            raise RatchetError("invalid_evidence_sources")
+        sources: dict[str, EvidenceSource] = {}
+        for raw_source in raw_sources:
+            source = EvidenceSource.from_dict(raw_source)
+            if source.source_id in sources:
+                raise RatchetError("duplicate_source_id")
+            sources[source.source_id] = source
+        return cls(sources=sources)
+
+
+@dataclass(frozen=True, slots=True)
 class FactClaim:
     key: str
     label: str
@@ -114,10 +160,6 @@ class FactClaim:
         }
 
 
-def _evidence_digest(value: object) -> str:
-    return hashlib.sha256(_canonical(value)).hexdigest()
-
-
 def _finding(*, rule_id: str, subject_key: str, message: str, evidence: object) -> Finding:
     return Finding.create(
         adapter_id=ADAPTER_ID,
@@ -126,17 +168,23 @@ def _finding(*, rule_id: str, subject_key: str, message: str, evidence: object) 
         subject_kind="fact_output",
         subject_key=subject_key,
         message=message,
-        evidence_sha256=_evidence_digest(evidence),
+        evidence_sha256=canonical_sha256(evidence),
     )
 
 
 def observe_fact_output(
     document: object,
     policy: object,
+    evidence_registry: object,
     *,
     subject: str,
 ) -> Observation:
     """Validate one structured response and emit deterministic findings.
+
+    The model-controlled document may only reference source IDs that the outer
+    runtime registered from trusted tool/file/command evidence. This prevents a
+    model from satisfying a `source required` rule by inventing a plausible-looking
+    source string.
 
     The outer runtime must render only the validated claims. Free-form text outside
     this envelope is deliberately outside the trust boundary and must not bypass the
@@ -144,6 +192,7 @@ def observe_fact_output(
     """
     normalized_subject = _string(subject, "subject")
     parsed_policy = FactOutputPolicy.from_dict(policy)
+    parsed_evidence = EvidenceRegistry.from_dict(evidence_registry)
     if not _exact_keys(document, {"schema", "claims"}):
         raise RatchetError("invalid_fact_output_document")
     if document["schema"] != FACT_OUTPUT_SCHEMA:
@@ -180,6 +229,7 @@ def observe_fact_output(
                 )
             )
             continue
+
         if claim_policy.source == "required" and claim.source is None:
             findings.append(
                 _finding(
@@ -189,12 +239,26 @@ def observe_fact_output(
                     evidence=claim.to_dict(),
                 )
             )
-        elif claim_policy.source == "forbidden" and claim.source is not None:
+            continue
+
+        if claim_policy.source == "forbidden":
+            if claim.source is not None:
+                findings.append(
+                    _finding(
+                        rule_id="fact-output.source-forbidden",
+                        subject_key=f"claims/{claim.key}",
+                        message=f"source must be omitted for label: {claim.label}",
+                        evidence=claim.to_dict(),
+                    )
+                )
+            continue
+
+        if claim.source is not None and claim.source not in parsed_evidence.sources:
             findings.append(
                 _finding(
-                    rule_id="fact-output.source-forbidden",
+                    rule_id="fact-output.unknown-source",
                     subject_key=f"claims/{claim.key}",
-                    message=f"source must be omitted for label: {claim.label}",
+                    message=f"source is not present in trusted evidence registry: {claim.source}",
                     evidence=claim.to_dict(),
                 )
             )
