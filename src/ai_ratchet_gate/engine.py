@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .model import Decision, Observation, RatchetError
+from .waiver import validate_waived_finding_ids
 
 KNOWLEDGE_SCHEMA = "ai-ratchet-gate.solution-knowledge/v1"
 MAX_KNOWLEDGE_ENTRIES = 10_000
@@ -22,6 +23,7 @@ def evaluate(
     *,
     mode: str = "ratchet",
     policy: str = "new_only",
+    waived_finding_ids: Iterable[str] = (),
 ) -> Decision:
     if type(mode) is not str or mode not in {"observe", "ratchet", "strict"}:
         raise RatchetError("invalid_mode")
@@ -36,10 +38,14 @@ def evaluate(
     baseline = tuple(sorted(raw_baseline))
     if len(baseline) != len(set(baseline)):
         raise RatchetError("invalid_baseline_ids")
+    waived = validate_waived_finding_ids(waived_finding_ids)
     current = {item.finding_id for item in observation.findings}
     known = set(baseline)
     accepted = tuple(sorted(current & known))
-    new = tuple(sorted(current - known))
+    raw_new = current - known
+    # waiverはbaseline外のfindingだけを一時的に例外扱いする。軸の相殺はしない。
+    waived_applied = tuple(sorted(set(waived) & raw_new))
+    new = tuple(sorted(raw_new - set(waived_applied)))
     resolved = tuple(sorted(known - current))
     denied = mode == "strict" and bool(current)
     if mode == "ratchet":
@@ -53,6 +59,7 @@ def evaluate(
         new=new,
         resolved=resolved,
         baseline_ids=baseline,
+        waived=waived_applied,
     )
 
 

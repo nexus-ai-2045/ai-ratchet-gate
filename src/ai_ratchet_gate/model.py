@@ -154,3 +154,4 @@ class Decision:
     new: tuple[str, ...]
     resolved: tuple[str, ...]
     baseline_ids: tuple[str, ...]
+    waived: tuple[str, ...] = ()

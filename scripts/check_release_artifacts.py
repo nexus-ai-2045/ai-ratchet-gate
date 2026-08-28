@@ -30,6 +30,7 @@ REQUIRED_WHEEL_SUFFIXES = (
     "ai_ratchet_gate/engine.py",
     "ai_ratchet_gate/model.py",
     "ai_ratchet_gate/receipt.py",
+    "ai_ratchet_gate/waiver.py",
     "ai_ratchet_gate/adapters/__init__.py",
     "ai_ratchet_gate/adapters/protocol.py",
     "ai_ratchet_gate/adapters/tracked_ignored.py",
@@ -67,6 +68,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "src/ai_ratchet_gate/engine.py",
     "src/ai_ratchet_gate/model.py",
     "src/ai_ratchet_gate/receipt.py",
+    "src/ai_ratchet_gate/waiver.py",
     "src/ai_ratchet_gate/adapters/__init__.py",
     "src/ai_ratchet_gate/adapters/protocol.py",
     "src/ai_ratchet_gate/adapters/tracked_ignored.py",
@@ -83,6 +85,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "tests/test_release_artifacts.py",
     "tests/test_release_changelog.py",
     "tests/test_smoke_install_artifacts.py",
+    "tests/test_waiver.py",
     "ai_ratchet_gate.py",
     "setup.cfg",
 )

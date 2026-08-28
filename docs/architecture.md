@@ -26,7 +26,10 @@
 - `model`: Finding、Observation、Decisionのversioned schema
 - `adapters`: 対象をread-only観測し、安定IDへ正規化するbuilt-in adapter
 - `engine`: adapterに依存しない集合比較と軸別判定
-- JSON baseline: 既存負債のreviewed snapshot。期限付きwaiverは次段階で別schemaとして追加する
+- `waiver`: 期限付き例外のschema検証と適用判定（承認はしない）
+- JSON baseline: 既存負債のreviewed snapshot（grandfatherされたfinding ID集合）
+- JSON waiver: baselineと分離した期限付き例外。`evaluate --waiver`でopt-in消費するだけであり、
+  追加・延長・scope変更の自動承認はしない
 - `receipt`: subject SHAと全入力digestを結び付けた機械可読証跡
 
 legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を二重化しない。legacy入口は
