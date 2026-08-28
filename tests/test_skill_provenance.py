@@ -428,3 +428,163 @@ def test_stable_ids_across_tool_list_syntax(tmp_path: Path) -> None:
     assert {item.finding_id for item in string_form.findings} == {
         item.finding_id for item in list_form.findings
     }
+
+
+def test_empty_skills_root_observes_zero_findings(tmp_path: Path) -> None:
+    (tmp_path / DEFAULT_SKILLS_ROOT).mkdir()
+    observation = SkillProvenanceAdapter().observe(
+        ScanContext(tmp_path, "repo:skills@empty")
+    )
+    assert observation.findings == ()
+    assert evaluate(observation, [], mode="ratchet", policy="new_only").status == "allow"
+
+
+def test_scripts_added_from_absent_tree_denies(tmp_path: Path) -> None:
+    _write_skill(tmp_path, "grow", allowed_tools="Read")
+    adapter = SkillProvenanceAdapter()
+    baseline_ids = [
+        item.finding_id
+        for item in adapter.observe(ScanContext(tmp_path, "repo:skills@1")).findings
+    ]
+    _write_skill(tmp_path, "grow", allowed_tools="Read", scripts={"boot.sh": "echo hi"})
+    current = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
+    decision = evaluate(current, baseline_ids, mode="ratchet", policy="new_only")
+    assert decision.status == "deny"
+    assert any(
+        item.rule_id == "skill_scripts_digest" and item.finding_id in decision.new
+        for item in current.findings
+    )
+
+
+def test_operational_observe_evaluate_receipt_allow(
+    tmp_path: Path, capsys
+) -> None:
+    """運用経路: observe → grandfather baseline → evaluate → receipt allow。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_skill(
+        repo, "ops", allowed_tools="Read", scripts={"run.sh": "echo ops"}
+    )
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    receipt = tmp_path / "receipt.json"
+    assert main(
+        [
+            "observe",
+            "--repo",
+            str(repo),
+            "--adapter",
+            "skill.provenance",
+            "--subject",
+            "repo:ops@head",
+            "--out",
+            str(observation),
+        ]
+    ) == 0
+    payload = json.loads(observation.read_text(encoding="utf-8"))
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "skill.provenance",
+                "adapter_version": "1",
+                "subject": "repo:ops@head",
+                "policy": "new_only",
+                "finding_ids": [item["finding_id"] for item in payload["findings"]],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            "repo:ops@head",
+            "--receipt",
+            str(receipt),
+        ]
+    ) == 0
+    decision = json.loads(receipt.read_text(encoding="utf-8"))
+    assert decision["decision"]["status"] == "allow"
+    assert decision["decision"]["new"] == []
+    assert decision["receipt_sha256"]
+
+
+def test_observe_cli_missing_skills_root_fails_closed(
+    tmp_path: Path, capsys
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    code = main(
+        [
+            "observe",
+            "--repo",
+            str(repo),
+            "--adapter",
+            "skill.provenance",
+            "--subject",
+            "repo:missing@head",
+        ]
+    )
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "tool_error"
+    assert payload["error"] == "skills_root_missing"
+
+
+def test_baseline_from_git_adapter_cannot_mask_skill_findings(
+    tmp_path: Path, capsys
+) -> None:
+    """別adapterのbaseline finding IDでは skill 軸を隠せない（identity mismatch）。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_skill(repo, "cross", allowed_tools="Read")
+    observation = tmp_path / "observation.json"
+    baseline = tmp_path / "baseline.json"
+    assert main(
+        [
+            "observe",
+            "--repo",
+            str(repo),
+            "--adapter",
+            "skill.provenance",
+            "--subject",
+            "repo:cross@head",
+            "--out",
+            str(observation),
+        ]
+    ) == 0
+    baseline.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.baseline/v1",
+                "adapter_id": "git.tracked_ignored",
+                "adapter_version": "1",
+                "subject": "repo:cross@head",
+                "policy": "new_only",
+                "finding_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    code = main(
+        [
+            "evaluate",
+            "--observation",
+            str(observation),
+            "--baseline",
+            str(baseline),
+            "--expected-subject",
+            "repo:cross@head",
+        ]
+    )
+    assert code == 2
+    assert "baseline_identity_mismatch" in capsys.readouterr().out
