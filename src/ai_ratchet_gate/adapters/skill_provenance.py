@@ -30,6 +30,7 @@ SKILL_FILENAME = "SKILL.md"
 SCRIPTS_DIRNAME = "scripts"
 
 _FRONTMATTER_BOUNDARY = re.compile(r"\A---\r?\n(.*?\r?\n)---(?:\r?\n|\Z)", re.DOTALL)
+_ALLOWED_TOOLS_KEY = re.compile(r"^allowed-tools\s*:\s*(.*)$")
 _TOOL_TOKEN = re.compile(r"[^\s,]+")
 
 
@@ -56,54 +57,74 @@ def _repo_relative(root: Path, path: Path) -> str:
     text = relative.as_posix()
     if text.startswith("/") or any(part in {"", ".", ".."} for part in text.split("/")):
         raise RatchetError("invalid_skill_path")
+    if "::" in text or "@" in text:
+        # subject_key 区切り子との衝突を静かに同一視しない
+        raise RatchetError("invalid_skill_path")
     return _nfc(text)
 
 
+def _parse_tool_tokens(remainder: str) -> tuple[str, ...]:
+    if remainder.startswith("[") and remainder.endswith("]"):
+        inner = remainder[1:-1].strip()
+        if not inner:
+            return ()
+        items = []
+        for part in inner.split(","):
+            token = _nfc(part.strip().strip("\"'"))
+            if not token or "::" in token:
+                raise RatchetError("skill_frontmatter_invalid")
+            items.append(token)
+        return tuple(sorted(set(items)))
+    tokens = [_nfc(match.group(0)) for match in _TOOL_TOKEN.finditer(remainder)]
+    if not tokens:
+        raise RatchetError("skill_frontmatter_invalid")
+    if any("::" in token for token in tokens):
+        raise RatchetError("skill_frontmatter_invalid")
+    return tuple(sorted(set(tokens)))
+
+
 def _parse_allowed_tools(frontmatter: str) -> tuple[str, ...] | None:
-    """allowed-tools を返す。キー欠落は None（unrestricted）、空宣言は ()。"""
+    """allowed-tools を返す。キー欠落は None（unrestricted）、空宣言は ()。
+
+    YAMLの `allowed-tools : ...`（コロン前空白）も受理する。
+    同一frontmatter内の重複キーは曖昧なので fail-closed。
+    """
     lines = frontmatter.splitlines()
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if not line.startswith("allowed-tools:"):
-            index += 1
+    matches: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        # インデント付き行は list 継続とみなし、トップレベルキーとしては扱わない
+        if line.startswith((" ", "\t")):
             continue
-        remainder = line[len("allowed-tools:") :].strip()
-        if remainder == "" or remainder in {"|", ">"}:
-            items: list[str] = []
-            index += 1
-            while index < len(lines):
-                child = lines[index]
-                if child.strip() == "":
-                    index += 1
-                    continue
-                if not child.startswith((" ", "\t")):
-                    break
-                stripped = child.strip()
-                if not stripped.startswith("- "):
-                    raise RatchetError("skill_frontmatter_invalid")
-                token = _nfc(stripped[2:].strip().strip("\"'"))
-                if not token or any(ch.isspace() for ch in token):
-                    raise RatchetError("skill_frontmatter_invalid")
-                items.append(token)
-                index += 1
-            return tuple(sorted(set(items)))
-        if remainder.startswith("[") and remainder.endswith("]"):
-            inner = remainder[1:-1].strip()
-            if not inner:
-                return ()
-            items = []
-            for part in inner.split(","):
-                token = _nfc(part.strip().strip("\"'"))
-                if not token:
-                    raise RatchetError("skill_frontmatter_invalid")
-                items.append(token)
-            return tuple(sorted(set(items)))
-        tokens = [_nfc(match.group(0)) for match in _TOOL_TOKEN.finditer(remainder)]
-        if not tokens:
-            raise RatchetError("skill_frontmatter_invalid")
-        return tuple(sorted(set(tokens)))
-    return None
+        matched = _ALLOWED_TOOLS_KEY.match(line)
+        if matched is not None:
+            matches.append((index, matched.group(1)))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise RatchetError("skill_frontmatter_duplicate_allowed_tools")
+
+    index, remainder = matches[0]
+    remainder = remainder.strip()
+    if remainder == "" or remainder in {"|", ">"}:
+        items: list[str] = []
+        cursor = index + 1
+        while cursor < len(lines):
+            child = lines[cursor]
+            if child.strip() == "":
+                cursor += 1
+                continue
+            if not child.startswith((" ", "\t")):
+                break
+            stripped = child.strip()
+            if not stripped.startswith("- "):
+                raise RatchetError("skill_frontmatter_invalid")
+            token = _nfc(stripped[2:].strip().strip("\"'"))
+            if not token or any(ch.isspace() for ch in token) or "::" in token:
+                raise RatchetError("skill_frontmatter_invalid")
+            items.append(token)
+            cursor += 1
+        return tuple(sorted(set(items)))
+    return _parse_tool_tokens(remainder)
 
 
 def _extract_frontmatter(text: str) -> str:
@@ -124,6 +145,34 @@ def _evidence(*parts: str) -> str:
     return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
 
+def _iter_script_files(scripts_dir: Path) -> tuple[Path, ...]:
+    """scripts/ を明示 walk し、列挙失敗を空結果へ潰さない。"""
+    stack = [scripts_dir]
+    files: list[Path] = []
+    while stack:
+        current = stack.pop()
+        try:
+            children = list(current.iterdir())
+        except OSError as error:
+            raise RatchetError("skill_scripts_enumeration_failed") from error
+        for child in sorted(children, key=lambda item: item.name):
+            try:
+                if child.is_symlink():
+                    raise RatchetError("skill_scripts_symlink_rejected")
+                is_dir = child.is_dir()
+                is_file = child.is_file()
+            except OSError as error:
+                raise RatchetError("skill_scripts_enumeration_failed") from error
+            if is_dir:
+                stack.append(child)
+                continue
+            if is_file:
+                files.append(child)
+                continue
+            raise RatchetError("skill_scripts_enumeration_failed")
+    return tuple(sorted(files, key=lambda item: item.as_posix()))
+
+
 def _list_executable_assets(scripts_dir: Path) -> tuple[tuple[str, str], ...]:
     """scripts/ 配下の通常ファイルを (scripts相対path, content digest) で返す。
 
@@ -136,20 +185,13 @@ def _list_executable_assets(scripts_dir: Path) -> tuple[tuple[str, str], ...]:
     if not scripts_dir.is_dir():
         raise RatchetError("skill_scripts_not_directory")
     entries: list[tuple[str, str]] = []
-    try:
-        for path in sorted(scripts_dir.rglob("*")):
-            if path.is_symlink():
-                raise RatchetError("skill_scripts_symlink_rejected")
-            if path.is_dir():
-                continue
-            if not path.is_file():
-                raise RatchetError("skill_scripts_enumeration_failed")
-            rel = path.relative_to(scripts_dir).as_posix()
-            if any(part in {"", ".", ".."} for part in rel.split("/")):
-                raise RatchetError("invalid_skill_path")
-            entries.append((_nfc(rel), _file_digest(path)))
-    except OSError as error:
-        raise RatchetError("skill_scripts_enumeration_failed") from error
+    for path in _iter_script_files(scripts_dir):
+        rel = path.relative_to(scripts_dir).as_posix()
+        if any(part in {"", ".", ".."} for part in rel.split("/")):
+            raise RatchetError("invalid_skill_path")
+        if "@" in rel or "::" in rel:
+            raise RatchetError("invalid_skill_path")
+        entries.append((_nfc(rel), _file_digest(path)))
     return tuple(entries)
 
 
@@ -174,21 +216,27 @@ class SkillProvenanceAdapter:
             raise RatchetError("adapter_observation_failed") from error
         found: list[Path] = []
         for relative in self.skill_roots:
-            candidate = (context.root / relative).resolve(strict=False)
+            # resolve 前に symlink を拒否（resolve 後検査では効かない）
+            candidate = context.root / relative
             try:
-                candidate.relative_to(repo)
-            except ValueError as error:
+                if candidate.is_symlink():
+                    raise RatchetError("skills_root_symlink_rejected")
+            except OSError as error:
+                raise RatchetError("adapter_observation_failed") from error
+            try:
+                resolved = candidate.resolve(strict=False)
+                resolved.relative_to(repo)
+            except (OSError, ValueError) as error:
                 raise RatchetError("skill_path_escapes_root") from error
-            if not candidate.exists():
+            if not resolved.exists():
                 continue
-            if candidate.is_symlink():
+            if resolved.is_symlink():
                 raise RatchetError("skills_root_symlink_rejected")
-            if not candidate.is_dir():
+            if not resolved.is_dir():
                 raise RatchetError("skills_root_not_directory")
-            # 列挙不能を成功扱いにしない
-            if not os.access(candidate, os.R_OK | os.X_OK):
+            if not os.access(resolved, os.R_OK | os.X_OK):
                 raise RatchetError("adapter_observation_failed")
-            found.append(candidate)
+            found.append(resolved)
         return tuple(found)
 
     def list_skill_dirs(self, context: ScanContext) -> tuple[Path, ...]:
@@ -208,8 +256,7 @@ class SkillProvenanceAdapter:
                     raise RatchetError("skill_symlink_rejected")
                 if skill_md.is_file():
                     skill_dirs.append(child)
-        # 同一相対pathの二重計上を避け、path順で安定化
-        unique = { _repo_relative(context.root, path): path for path in skill_dirs }
+        unique = {_repo_relative(context.root, path): path for path in skill_dirs}
         return tuple(unique[key] for key in sorted(unique))
 
     def observe(self, context: ScanContext) -> Observation:
@@ -269,7 +316,6 @@ class SkillProvenanceAdapter:
             for rel, content_digest in _list_executable_assets(
                 skill_dir / SCRIPTS_DIRNAME
             ):
-                # path@digest: 新規ファイルも内容変更も new finding になる
                 asset_key = f"{skill_key}/scripts/{rel}@{content_digest}"
                 findings.append(
                     Finding.create(

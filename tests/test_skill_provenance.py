@@ -656,3 +656,101 @@ def test_stable_ids_across_tool_list_syntax(tmp_path: Path) -> None:
     assert {item.finding_id for item in string_form.findings} == {
         item.finding_id for item in list_form.findings
     }
+
+
+def test_duplicate_allowed_tools_keys_fail_closed(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "dup"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: dup\n"
+        "description: x\n"
+        "allowed-tools: Read\n"
+        "allowed-tools: Write\n"
+        "---\n"
+        "# dup\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RatchetError, match="skill_frontmatter_duplicate_allowed_tools"
+    ):
+        SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
+
+
+def test_allowed_tools_space_before_colon_is_parsed(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "spaced"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: spaced\n"
+        "description: x\n"
+        "allowed-tools : Write\n"
+        "---\n"
+        "# spaced\n",
+        encoding="utf-8",
+    )
+    observation = SkillProvenanceAdapter().observe(
+        ScanContext(tmp_path, "repo:skills@1")
+    )
+    tokens = _by_rule(observation, "allowed_tools_token")
+    assert len(tokens) == 1
+    assert tokens[0].subject_key.endswith("::Write")
+    assert _by_rule(observation, "unrestricted_tools") == []
+
+
+def test_unreadable_scripts_subtree_fails_closed(tmp_path: Path) -> None:
+    import os
+    import stat
+
+    _write_skill(
+        tmp_path, "walk", allowed_tools="Read", scripts={"ok.sh": "echo ok"}
+    )
+    hidden = tmp_path / "skills" / "walk" / "scripts" / "hidden"
+    hidden.mkdir()
+    (hidden / "secret.sh").write_text("echo secret", encoding="utf-8")
+    hidden.chmod(0)
+    try:
+        with pytest.raises(RatchetError, match="skill_scripts_enumeration_failed"):
+            SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
+    finally:
+        hidden.chmod(stat.S_IRWXU)
+
+
+def test_skills_root_symlink_rejected_before_resolve(tmp_path: Path) -> None:
+    real = tmp_path / "real-skills"
+    real.mkdir()
+    (real / "linked").mkdir()
+    (real / "linked" / "SKILL.md").write_text(
+        "---\nname: linked\ndescription: x\nallowed-tools: Read\n---\n",
+        encoding="utf-8",
+    )
+    try:
+        (tmp_path / "skills").symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink unavailable")
+    with pytest.raises(RatchetError, match="skills_root_symlink_rejected"):
+        SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
+
+
+def test_delimiter_in_skill_or_tool_rejected(tmp_path: Path) -> None:
+    bad_skill = tmp_path / "skills" / "a::b"
+    bad_skill.mkdir(parents=True)
+    (bad_skill / "SKILL.md").write_text(
+        "---\nname: ab\ndescription: x\nallowed-tools: Read\n---\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RatchetError, match="invalid_skill_path"):
+        SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
+
+    good = tmp_path / "skills" / "plain"
+    # clean previous broken tree for second case
+    import shutil
+
+    shutil.rmtree(tmp_path / "skills")
+    good.mkdir(parents=True)
+    (good / "SKILL.md").write_text(
+        "---\nname: plain\ndescription: x\nallowed-tools: Bash(a::b)\n---\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RatchetError, match="skill_frontmatter_invalid"):
+        SkillProvenanceAdapter().observe(ScanContext(tmp_path, "repo:skills@1"))
