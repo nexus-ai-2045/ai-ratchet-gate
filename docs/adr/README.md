@@ -6,3 +6,4 @@
 | ADR | 状態 | 概要 |
 |---|---|---|
 | [ADR-0001](ADR-0001-generic-ratchet-engine.md) | accepted | 汎用ラチェットengineとadapter境界 |
+| [ADR-0004](ADR-0004-skill-provenance-adapter.md) | accepted | skill provenance / permission expansion adapter |
