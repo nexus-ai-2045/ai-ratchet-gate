@@ -34,6 +34,14 @@ critical propertyをruntimeで監視し、必要な場合だけ出力を補正�
 は、守りたいarchitecture特性を継続的に測定し、変更時のfeedbackへ接続する。本ツールの各adapterは
 離散的なfitness functionに相当する。ただし安全軸を総合点へ集約せず、軸ごとの悪化を独立に止める。
 
+## Provenance / digest（語彙のみ）
+
+ソフトウェア供給鎖のprovenanceやartifact digest（SLSAやin-totoが扱う概念）を、skillを
+内容固定されたartifactとして扱う語彙として借りる。本ツールはそれらのruntime、attestation
+形式、署名検証を実装しない。`skills.provenance`は`scripts/`各ファイルの内容digestを
+`executable_asset`の安定キーへ織り込みdeny軸とし、`allowed-tools`のcapability expansionも
+独立Findingへ正規化する。`SKILL.md`本文digestはevidenceに留め、本文のみの編集ではdenyしない。
+
 ## Receding-horizon / MPC-inspired operation
 
 現在状態と提案された次状態を評価し、一段進んだ後に再観測・再計画する。これは長い自動計画を
