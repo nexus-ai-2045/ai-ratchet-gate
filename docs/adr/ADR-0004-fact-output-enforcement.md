@@ -27,7 +27,8 @@ This design follows established policy-enforcement and structured-output pattern
 2. bind references to data supplied by a trusted outer runtime,
 3. validate against reviewed schema/policy,
 4. fail closed on malformed or ambiguous input,
-5. allow rendering only after the enforcement point succeeds.
+5. bind the allow result to the exact validated document,
+6. allow rendering only after the enforcement point succeeds.
 
 Provider-native structured output can reduce malformed envelopes, but the deterministic validator remains
 necessary because provider capability and runtime integration differ.
@@ -54,6 +55,7 @@ Malformed or ambiguous input is a tool error (exit 2 / `RatchetError`) and fails
 
 - unknown schema,
 - duplicate JSON object/claim/source key,
+- whitespace-only or over-limit strings,
 - invalid policy/evidence shape,
 - invalid evidence digest,
 - oversized or non-regular input.
@@ -66,7 +68,9 @@ Well-formed semantic policy violations become normal Findings:
 - `fact-output.source-forbidden`,
 - `fact-output.unknown-source`.
 
-The same semantic violation yields the same Finding identity.
+The same semantic violation yields the same Finding identity. Input string limits are aligned with the
+common Observation model so an input accepted by this adapter does not fail later merely because a Finding
+message or subject exceeds the shared model limit.
 
 ### Runtime contract
 
@@ -87,8 +91,11 @@ model/tool synthesis          -> structured claim envelope
 Only exit 0 may reach the renderer. Free-form text that bypasses the envelope is outside the trusted path.
 A runtime must not append unvalidated prose after validation and still claim enforcement.
 
-The adapter is read-only with respect to the target project. The optional CLI output is only an Observation
-artifact for audit/evaluation.
+The CLI itself is read-only and writes no Observation file. It emits a validation envelope to stdout with
+canonical SHA-256 digests for the exact document, policy, and evidence registry used in validation. A
+cross-process renderer must verify `document_sha256` against the exact canonical document it will present;
+exit 0 alone must not authorize reopening an unbound mutable file. This closes the validate-then-replace
+TOCTOU path without adding a new filesystem mutation exception.
 
 ### Product/runtime boundary
 
@@ -111,7 +118,7 @@ The repository owns only:
 - the generic policy schema,
 - the generic trusted evidence registry schema,
 - deterministic validation behavior,
-- the CLI/read-only integration contract.
+- the read-only CLI/integration contract.
 
 ## MPC / failure forecast
 
@@ -120,13 +127,15 @@ Before rollout, assume these failure modes:
 1. **Bypass:** runtime validates JSON then appends free text. Mitigation: render envelope-only.
 2. **Invented citation:** model emits a plausible fake source. Mitigation: source ID must exist in the
    runtime-produced evidence registry.
-3. **Policy/evidence drift:** runtime embeds stale inputs. Mitigation: pin canonical policy/evidence digests
+3. **Validate-then-replace:** a mutable document changes after CLI validation. Mitigation: allow result is
+   bound to `document_sha256`; renderer verifies the exact canonical document before presentation.
+4. **Policy/evidence drift:** runtime embeds stale inputs. Mitigation: pin canonical policy/evidence digests
    in the outer runtime receipt.
-4. **Provider mismatch:** model cannot guarantee schema. Mitigation: validator remains authoritative; retry
+5. **Provider mismatch:** model cannot guarantee schema. Mitigation: validator remains authoritative; retry
    or hold instead of rendering malformed output.
-5. **False “enforced” claim:** package is installed but output hook is not connected. Mitigation: runtime
+6. **False “enforced” claim:** package is installed but output hook is not connected. Mitigation: runtime
    smoke intentionally submits an invalid envelope and verifies it never reaches rendering.
-6. **SSOT duplication:** project vocabulary is copied into this package. Mitigation: code is vocabulary-free;
+7. **SSOT duplication:** project vocabulary is copied into this package. Mitigation: code is vocabulary-free;
    project policy remains external and reviewed.
 
 ## Verification / done criteria
@@ -134,15 +143,15 @@ Before rollout, assume these failure modes:
 Core implementation is complete when:
 
 - valid claims bound to registered evidence produce zero findings,
-- missing/forbidden/unregistered sources and unsupported labels produce stable findings,
+- missing/forbidden/unregistered/blank sources and unsupported labels produce stable fail-closed results,
 - malformed/duplicate inputs fail closed,
 - label vocabulary can change by policy without code change,
-- policy/evidence canonical digests are reproducible,
-- CLI returns 0/1/2 for allow/deny/tool-error,
-- CI passes on supported Python/OS matrix.
+- policy/evidence/document canonical digests are reproducible,
+- CLI is read-only and returns 0/1/2 for allow/deny/tool-error,
+- CI passes on supported Python/OS matrix and release artifact smoke passes.
 
 Operational enforcement for a specific runtime is complete only after that runtime has a pre-render hook and
-a negative smoke proves an invalid or invented-source claim is not shown to the user.
+a negative smoke proves an invalid, invented-source, or document-mismatch claim is not shown to the user.
 
 ## Non-goals
 
