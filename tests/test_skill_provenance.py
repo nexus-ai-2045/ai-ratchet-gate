@@ -150,9 +150,22 @@ def test_unrestricted_tools_finding_when_allowed_tools_absent(
     assert _by_rule(observation, "allowed_tools_token") == []
 
 
-def test_executable_asset_addition_denies_content_edit_does_not(
-    tmp_path: Path,
-) -> None:
+def test_grandfathered_script_digest_allows(tmp_path: Path) -> None:
+    _write_skill(
+        tmp_path, "payload", allowed_tools="Read", scripts={"run.sh": "echo fixed"}
+    )
+    adapter = SkillProvenanceAdapter()
+    observation = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
+    baseline_ids = [item.finding_id for item in observation.findings]
+    assets = _by_rule(observation, "executable_asset")
+    assert len(assets) == 1
+    assert "@" in assets[0].subject_key
+    decision = evaluate(observation, baseline_ids, mode="ratchet", policy="new_only")
+    assert decision.status == "allow"
+    assert decision.new == ()
+
+
+def test_new_or_changed_script_payload_denies(tmp_path: Path) -> None:
     _write_skill(
         tmp_path, "payload", allowed_tools="Read", scripts={"run.sh": "echo old"}
     )
@@ -163,32 +176,72 @@ def test_executable_asset_addition_denies_content_edit_does_not(
     _write_skill(
         tmp_path, "payload", allowed_tools="Read", scripts={"run.sh": "echo new"}
     )
-    edited = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
-    edited_decision = evaluate(
-        edited, baseline_ids, mode="ratchet", policy="new_only"
+    changed = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
+    changed_decision = evaluate(
+        changed, baseline_ids, mode="ratchet", policy="new_only"
     )
-    assert edited_decision.status == "allow"
-    assert {item.finding_id for item in edited.findings} == set(baseline_ids)
-    # evidence digest は内容に追従して変わる
-    old_asset = _by_rule(baseline_obs, "executable_asset")[0]
-    new_asset = _by_rule(edited, "executable_asset")[0]
-    assert old_asset.finding_id == new_asset.finding_id
-    assert old_asset.evidence_sha256 != new_asset.evidence_sha256
+    assert changed_decision.status == "deny"
+    new_changed = [
+        item for item in changed.findings if item.finding_id in changed_decision.new
+    ]
+    assert len(new_changed) == 1
+    assert new_changed[0].rule_id == "executable_asset"
+    assert new_changed[0].subject_key.startswith("skills/payload/scripts/run.sh@")
+    assert changed_decision.resolved  # 旧 digest finding が resolved
 
     _write_skill(
         tmp_path,
         "payload",
         allowed_tools="Read",
-        scripts={"run.sh": "echo new", "extra.sh": "echo x"},
+        scripts={"run.sh": "echo old", "extra.sh": "echo x"},
     )
     added = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
     added_decision = evaluate(added, baseline_ids, mode="ratchet", policy="new_only")
     assert added_decision.status == "deny"
     assert any(
         item.rule_id == "executable_asset"
-        and item.subject_key.endswith("/scripts/extra.sh")
+        and "/scripts/extra.sh@" in item.subject_key
         and item.finding_id in added_decision.new
         for item in added.findings
+    )
+
+
+def test_script_and_tool_axes_do_not_cancel(tmp_path: Path) -> None:
+    """tool縮小（改善）と script digest変更（悪化）は相殺しない。"""
+    _write_skill(
+        tmp_path,
+        "mix",
+        allowed_tools="Read Write",
+        scripts={"run.sh": "echo old"},
+    )
+    adapter = SkillProvenanceAdapter()
+    baseline_obs = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
+    baseline_ids = [item.finding_id for item in baseline_obs.findings]
+    old_write = next(
+        item
+        for item in _by_rule(baseline_obs, "allowed_tools_token")
+        if item.subject_key.endswith("::Write")
+    )
+    old_script = _by_rule(baseline_obs, "executable_asset")[0]
+
+    _write_skill(
+        tmp_path,
+        "mix",
+        allowed_tools="Read",
+        scripts={"run.sh": "echo new"},
+    )
+    current = adapter.observe(ScanContext(tmp_path, "repo:skills@1"))
+    decision = evaluate(current, baseline_ids, mode="ratchet", policy="new_only")
+    assert decision.status == "deny"
+    assert old_write.finding_id in decision.resolved
+    assert old_script.finding_id in decision.resolved
+    assert any(
+        item.rule_id == "executable_asset" and item.finding_id in decision.new
+        for item in current.findings
+    )
+    assert not any(
+        item.rule_id == "allowed_tools_token" and item.finding_id in decision.new
+        for item in current.findings
     )
 
 

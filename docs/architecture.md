@@ -49,7 +49,8 @@ legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を�
 2. adapterがFindingを安定IDへ正規化する。Gitでは追跡済みかつignore対象のパスを、
    NUL区切りのUTF-8として受け取る。UTF-8として読めないパスはfail-closedで停止する。
    skillでは`new_skill` / `allowed_tools_token` / `unrestricted_tools` /
-   `executable_asset`を独立軸とし、内容digestはevidenceにだけ載せる。
+   `executable_asset`を独立軸とする。`scripts/`のpayload digestはdeny軸。
+   `SKILL.md`本文だけの変更はevidenceのみ（finding ID不変）。
 3. baselineのfinding ID集合と比較する。
 4. 新規findingがなければ成功し、あれば修復案を表示して失敗する。
 5. 明示されたbaseline更新時だけ、baselineファイルを書き換える。

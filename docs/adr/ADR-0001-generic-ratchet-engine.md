@@ -95,4 +95,4 @@ scan、receipt、baseline縮小候補、修復候補の生成までは自動化�
 5. ~~第二adapterは決定論的なskill provenance / permission expansionを第一候補として個別設計する。~~
    （実装済み: ADR-0004、`skills.provenance`、`observe --adapter skills.provenance`、
    `new_skill` / `allowed_tools_token` / `unrestricted_tools` / `executable_asset`、
-   digestはevidence、回帰テスト）
+   scripts digestはdeny軸・SKILL.md本文はevidence、回帰テスト）
