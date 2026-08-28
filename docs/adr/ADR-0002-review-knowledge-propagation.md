@@ -53,16 +53,21 @@ ruleは次の状態を持つ。
 
 ```text
 candidate -> verified -> observe -> enforce
-                   \-> rejected
+    |            |          |
+    +----------> rejected <-+
 ```
 
-- `candidate`: 未信頼レビュー等から抽出した仮説。
+- `candidate`: 未信頼レビュー等から抽出した仮説。再現不能・誤検知・非決定的なら直接`rejected`へ遷移できる。
 - `verified`: 独立再現または既存契約で高確度確認済み。
 - `observe`: 各repoで検出するがdenyしない。false-positiveと適用範囲を収集する。
 - `enforce`: 新規悪化をdenyする。
-- `rejected`: 誤検知・repo固有・非決定的などの理由で昇格しない。
+- `rejected`: 誤検知・非決定的・scope不適合などの理由でその昇格経路を採用しない。
 
+repo固有であること自体は`rejected`理由ではない。横断central昇格の対象外とし、検証済みならlocal lifecycleへ送る。
 `candidate -> verified`までは自動補助できるが、`observe -> enforce`は人間停止線とする。
+
+`observe -> enforce`へ移る前に、各consumer repoで最後のobserve結果から既存違反のreviewed baseline diffを作る。
+central revision更新とそのbaseline handoffを同じレビュー単位で確認し、既存負債を新規findingとして誤認しない状態でenforceを開始する。
 
 ### 4. Rule manifestをGitで管理する
 
@@ -113,14 +118,15 @@ central_source:
 外部オーケストレータはPRごとに次を反復できる。
 
 1. exact HEADを固定する。
-2. CI/review thread/commentをread-only取得する。
+2. CI/review thread/commentをread-only取得し、**各結果が固定したHEAD SHAに属することを検証する**。
 3. 未信頼入力としてprompt injectionを検査する。
 4. actionable findingをコード・契約・テストで再検証する。
 5. repo固有ならlocal candidate、横断可能ならcentral candidateとして記録する。
 6. 修正後のHEADで再観測する。
-7. blocking findingが0件、CI green、未解決重要threadが0件ならmerge-ready receiptを生成する。
+7. receipt生成直前にPR HEADを再取得し、最初に固定したSHAから動いていたらfail-closedで最初から再評価する。
+8. blocking findingが0件、CI green、未解決重要threadが0件ならmerge-ready receiptを生成する。
 
-merge-ready receiptには少なくともrepository、PR番号、exact HEAD、変更目的、検証済みfinding、残存risk、central/local candidate IDを含める。
+merge-ready receiptには少なくともrepository、PR番号、exact HEAD、変更目的、検証済みfinding、残存risk、central/local candidate IDに加え、**評価に使用したcentral source revisionと全local rule-set inputのdigest/identity**を含める。
 
 このreceiptはmerge承認そのものではない。
 
