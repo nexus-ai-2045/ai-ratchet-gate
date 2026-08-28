@@ -18,7 +18,7 @@ AI Ratchet Gateは、AIエージェントが変更するリポジトリ、memory
 ## 現在地: v0.1
 
 実装済みは、Gitの`tracked ∧ ignored`矛盾を対象にした最初のアダプターと、
-Agent Skillsの`SKILL.md` / `scripts/`を対象にした第二アダプター`skill.provenance`です。
+Agent Skillsの`SKILL.md` / `scripts/`を対象にした第二アダプター`skills.provenance`です。
 Memory管理、skill生成、エージェント実行、品質全般の評価はまだ提供していません。
 v1.0には3種類以上の独立アダプターが必要なため、本時点ではv1.0完了を主張しません。
 
@@ -38,7 +38,7 @@ v1.0には3種類以上の独立アダプターが必要なため、本時点で
 
 実装順は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)に従う。schema・純関数、Git検査の
 adapter化、receipt、waiver検証（Next Action 1–4）に加え、第二adapter
-`skill.provenance`（Next Action 5 / [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）
+`skills.provenance`（Next Action 5 / [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）
 も実装済み。v1.0完了にはさらに独立adapterが必要。
 
 ## Phase 2: AI運用向け参照アダプター
@@ -46,9 +46,10 @@ adapter化、receipt、waiver検証（Next Action 1–4）に加え、第二adap
 候補を一度にenforceせず、検出精度と安定IDを検証してから個別に導入します。
 
 - memory: secret・個人情報・未承認ファイル参照など、決定論的に検査できる項目
-- skills: 出所、digest、許可されたtool／権限宣言の新規拡大（実装済み: `skill.provenance`。
-  Agent Skillsの`SKILL.md` + sibling `scripts/` をread-only観測し、新規skill・
-  `allowed-tools`拡大・scripts digest変更を独立軸でdenyする）
+- skills: 出所、digest、許可されたtool／権限宣言の新規拡大（実装済み: `skills.provenance`。
+  Agent Skillsの`SKILL.md` + sibling `scripts/` を `.agents/skills/` と `skills/` から
+  read-only観測し、`new_skill` / `allowed_tools_token` / `unrestricted_tools` /
+  `executable_asset`を独立軸でdenyする。内容digestはevidenceであり、本文のみの編集ではdenyしない）
 - agent設定: model、tool、外部送信先、書込権限の新規追加
 - eval: 固定fixtureに対する既知成功ケースの退行
 - repository: secret候補、生成物混入、個人pathなどの増分違反

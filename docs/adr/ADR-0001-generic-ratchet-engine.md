@@ -93,5 +93,6 @@ scan、receipt、baseline縮小候補、修復候補の生成までは自動化�
 4. ~~waiver検証と脅威モデルの回帰テストを追加する。~~（実装済み: `ai-ratchet-gate.waivers/v1`、
    `evaluate --waiver`、期限・scope・review bindingのfail-closed、安価なゲームの回帰テスト）
 5. ~~第二adapterは決定論的なskill provenance / permission expansionを第一候補として個別設計する。~~
-   （実装済み: ADR-0004、`skill.provenance`、`observe --adapter skill.provenance`、
-   `skill_present` / `skill_allowed_tool` / `skill_scripts_digest` の独立軸、回帰テスト）
+   （実装済み: ADR-0004、`skills.provenance`、`observe --adapter skills.provenance`、
+   `new_skill` / `allowed_tools_token` / `unrestricted_tools` / `executable_asset`、
+   digestはevidence、回帰テスト）
