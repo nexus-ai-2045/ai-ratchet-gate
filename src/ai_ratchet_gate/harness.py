@@ -89,7 +89,9 @@ class ResolutionReceipt:
     problem_key: str
     status: str
     applied: bool
+    knowledge_context_sha256: str
     knowledge_id: str | None
+    knowledge_evidence_sha256: str | None
     resolver_id: str | None
     resolver_version: str | None
     before_sha256: str
@@ -104,7 +106,9 @@ class ResolutionReceipt:
             "problem_key": self.problem_key,
             "status": self.status,
             "applied": self.applied,
+            "knowledge_context_sha256": self.knowledge_context_sha256,
             "knowledge_id": self.knowledge_id,
+            "knowledge_evidence_sha256": self.knowledge_evidence_sha256,
             "resolver_id": self.resolver_id,
             "resolver_version": self.resolver_version,
             "before_sha256": self.before_sha256,
@@ -129,20 +133,30 @@ def _receipt(
     problem_key: str,
     status: str,
     applied: bool,
+    knowledge_context_sha256: str,
     knowledge_id: str | None,
+    knowledge_evidence_sha256: str | None,
     resolver_id: str | None,
     resolver_version: str | None,
     before_sha256: str,
     after_sha256: str,
     verification: Verification | None,
 ) -> ResolutionReceipt:
+    context = _sha256(knowledge_context_sha256, "knowledge_context_sha256")
+    evidence = (
+        _sha256(knowledge_evidence_sha256, "knowledge_evidence_sha256")
+        if knowledge_evidence_sha256 is not None
+        else None
+    )
     body = {
         "schema": RECEIPT_SCHEMA,
         "subject": _nonempty(subject, "subject"),
         "problem_key": _nonempty(problem_key, "problem_key"),
         "status": _nonempty(status, "status"),
         "applied": applied,
+        "knowledge_context_sha256": context,
         "knowledge_id": knowledge_id,
+        "knowledge_evidence_sha256": evidence,
         "resolver_id": resolver_id,
         "resolver_version": resolver_version,
         "before_sha256": _sha256(before_sha256, "before_sha256"),
@@ -164,7 +178,9 @@ def _receipt(
         problem_key=body["problem_key"],
         status=body["status"],
         applied=applied,
+        knowledge_context_sha256=context,
         knowledge_id=knowledge_id,
+        knowledge_evidence_sha256=evidence,
         resolver_id=resolver_id,
         resolver_version=resolver_version,
         before_sha256=body["before_sha256"],
@@ -194,7 +210,10 @@ def _verify_without_mutation(
     verify: Callable[[Any, str], Verification],
     expected_sha256: str,
 ) -> Verification:
-    verification = verify(target, problem_key)
+    try:
+        verification = verify(target, problem_key)
+    except Exception as error:
+        raise RatchetError("verifier_failed") from error
     if not isinstance(verification, Verification):
         raise RatchetError("invalid_verification_result")
     observed = _sha256(snapshot(target), "verification_state_sha256")
@@ -207,6 +226,7 @@ def run_resolution_loop(
     resolution: Resolution,
     *,
     subject: str,
+    knowledge_context_sha256: str,
     target: Any,
     resolvers: dict[tuple[str, str], ResolverBinding],
     snapshot: Callable[[Any], str],
@@ -216,7 +236,13 @@ def run_resolution_loop(
     if not callable(snapshot) or not callable(verify):
         raise RatchetError("invalid_harness_callback")
     subject_value = _nonempty(subject, "subject")
-    before = _sha256(snapshot(target), "before_sha256")
+    context = _sha256(knowledge_context_sha256, "knowledge_context_sha256")
+    try:
+        before = _sha256(snapshot(target), "before_sha256")
+    except RatchetError:
+        raise
+    except Exception as error:
+        raise RatchetError("snapshot_failed") from error
 
     if resolution.status == "unknown":
         if resolution.knowledge is not None:
@@ -226,7 +252,9 @@ def run_resolution_loop(
             problem_key=resolution.problem_key,
             status="human_resolution_required",
             applied=False,
+            knowledge_context_sha256=context,
             knowledge_id=None,
+            knowledge_evidence_sha256=None,
             resolver_id=None,
             resolver_version=None,
             before_sha256=before,
@@ -253,7 +281,9 @@ def run_resolution_loop(
             problem_key=resolution.problem_key,
             status="already_resolved",
             applied=False,
+            knowledge_context_sha256=context,
             knowledge_id=knowledge.knowledge_id,
+            knowledge_evidence_sha256=knowledge.evidence_sha256,
             resolver_id=knowledge.resolver_id,
             resolver_version=knowledge.resolver_version,
             before_sha256=before,
@@ -271,7 +301,12 @@ def run_resolution_loop(
     except Exception as error:
         raise RatchetError("resolver_apply_failed") from error
 
-    after = _sha256(snapshot(target), "after_sha256")
+    try:
+        after = _sha256(snapshot(target), "after_sha256")
+    except RatchetError:
+        raise
+    except Exception as error:
+        raise RatchetError("snapshot_failed") from error
     post = _verify_without_mutation(
         target,
         resolution.problem_key,
@@ -284,7 +319,9 @@ def run_resolution_loop(
         problem_key=resolution.problem_key,
         status="resolved" if post.resolved else "verification_failed",
         applied=True,
+        knowledge_context_sha256=context,
         knowledge_id=knowledge.knowledge_id,
+        knowledge_evidence_sha256=knowledge.evidence_sha256,
         resolver_id=knowledge.resolver_id,
         resolver_version=knowledge.resolver_version,
         before_sha256=before,
