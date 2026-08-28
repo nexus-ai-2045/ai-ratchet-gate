@@ -186,6 +186,23 @@ def build_resolver_registry(
     return registry
 
 
+def _verify_without_mutation(
+    target: Any,
+    problem_key: str,
+    *,
+    snapshot: Callable[[Any], str],
+    verify: Callable[[Any, str], Verification],
+    expected_sha256: str,
+) -> Verification:
+    verification = verify(target, problem_key)
+    if not isinstance(verification, Verification):
+        raise RatchetError("invalid_verification_result")
+    observed = _sha256(snapshot(target), "verification_state_sha256")
+    if observed != expected_sha256:
+        raise RatchetError("verifier_mutated_target")
+    return verification
+
+
 def run_resolution_loop(
     resolution: Resolution,
     *,
@@ -223,9 +240,14 @@ def run_resolution_loop(
     if knowledge.problem_key != resolution.problem_key:
         raise RatchetError("problem_key_mismatch")
 
-    pre = verify(target, resolution.problem_key)
+    pre = _verify_without_mutation(
+        target,
+        resolution.problem_key,
+        snapshot=snapshot,
+        verify=verify,
+        expected_sha256=before,
+    )
     if pre.resolved:
-        after = _sha256(snapshot(target), "after_sha256")
         return _receipt(
             subject=subject_value,
             problem_key=resolution.problem_key,
@@ -235,7 +257,7 @@ def run_resolution_loop(
             resolver_id=knowledge.resolver_id,
             resolver_version=knowledge.resolver_version,
             before_sha256=before,
-            after_sha256=after,
+            after_sha256=before,
             verification=pre,
         )
 
@@ -250,7 +272,13 @@ def run_resolution_loop(
         raise RatchetError("resolver_apply_failed") from error
 
     after = _sha256(snapshot(target), "after_sha256")
-    post = verify(target, resolution.problem_key)
+    post = _verify_without_mutation(
+        target,
+        resolution.problem_key,
+        snapshot=snapshot,
+        verify=verify,
+        expected_sha256=after,
+    )
     return _receipt(
         subject=subject_value,
         problem_key=resolution.problem_key,
