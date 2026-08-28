@@ -34,6 +34,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
 | 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記 1 個) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
+| solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
 | memory / skills / tool権限 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
@@ -62,6 +63,10 @@ tool権限、agent設定、evalなどへ適用できます。Hermes Agentなど�
 - 日本語を含むパスを安全に扱い、検査不能時はfail-closedで停止する
 - 期限付きwaiver（`evaluate --waiver`）でレビュー済み`waivers/v1`だけを消費する
   （追加・延長・scope変更の自動承認はしない）
+- solution-knowledgeの`load_knowledge_document` / `compose_knowledge` / `resolve_problem`で、
+  検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
+  対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /
+  [ADR-0003](docs/adr/ADR-0003-solution-knowledge-propagation.md)）
 
 ## なぜ要るか
 
