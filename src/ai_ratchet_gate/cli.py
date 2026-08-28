@@ -32,7 +32,7 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .adapters import ScanContext, TrackedIgnoredAdapter
+from .adapters import ScanContext, SkillProvenanceAdapter, TrackedIgnoredAdapter
 from .engine import evaluate
 from .model import Finding, Observation, RatchetError
 from .receipt import build_receipt
@@ -282,6 +282,16 @@ def _observe_main(argv: list[str]) -> int:
         help="enforcement 側が固定する候補 identity (例: repo:owner/name@COMMIT_SHA)",
     )
     parser.add_argument(
+        "--adapter",
+        choices=["git.tracked_ignored", "skill.provenance"],
+        default="git.tracked_ignored",
+        help="組み込みadapter。既定はgit.tracked_ignored（後方互換）",
+    )
+    parser.add_argument(
+        "--skills-root",
+        help="skill.provenance 用。対象repo内の明示skills root（例: skills）",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         help="observation JSON の出力先 (検査対象repoの外)。省略時は stdout へ出力",
@@ -298,9 +308,15 @@ def _observe_main(argv: list[str]) -> int:
                 raise RatchetError("observation_out_unresolvable") from error
             if out_inside_repo:
                 raise RatchetError("observation_out_inside_repo")
-        observation = TrackedIgnoredAdapter().observe(
-            ScanContext(args.repo, args.subject)
-        )
+        if args.adapter == "skill.provenance":
+            if not args.skills_root:
+                raise RatchetError("skills_root_required")
+            adapter = SkillProvenanceAdapter(skills_root=args.skills_root)
+        else:
+            if args.skills_root:
+                raise RatchetError("skills_root_unsupported_for_adapter")
+            adapter = TrackedIgnoredAdapter()
+        observation = adapter.observe(ScanContext(args.repo, args.subject))
         text = json.dumps(
             observation.to_dict(), ensure_ascii=False, sort_keys=True,
             separators=(",", ":"),

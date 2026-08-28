@@ -6,6 +6,11 @@
 
 ### 追加
 
+- 第二built-in adapter `skill.provenance`（ADR-0005）。明示skills root配下のtracked `SKILL.md`
+  bundleをread-only観測し、`skill_present` / `skill_digest` / `skill_capability` Findingで
+  新規skill・digest変化・permission expansionをratchetする。runtime / Sigstore / OPAなし
+- `observe --adapter skill.provenance --skills-root <rel>` opt-in入口（既定adapterとlegacy CLIは不変）
+
 - 期限付きwaiver schema（`ai-ratchet-gate.waivers/v1`）と`evaluate --waiver`。baseline（grandfather）と
   分離し、finding ID・observation digest・review binding・有効期限へ束縛する。追加・延長・scope変更の
   自動承認入口は持たない

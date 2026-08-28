@@ -33,19 +33,21 @@
 - `receipt`: subject SHAと全入力digestを結び付けた機械可読証跡
 
 legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を二重化しない。legacy入口は
-互換用`exclude_standard` profile、汎用入口は再現可能な`repo_only` profileを使う。baselineとreceiptの
-書込みは同一directoryの一時fileを`fsync`した後にatomic replaceし、並走agentが途中状態を
-観測しないようにする。
+互換用`exclude_standard` profile、汎用入口は再現可能な`repo_only` profileを使う。
+第二adapter`SkillProvenanceAdapter`（`skill.provenance`）は同一のread-only / GIT隔離契約で、
+明示skills root内のtracked skill bundleだけを観測する。baselineとreceiptの書込みは同一directoryの
+一時fileを`fsync`した後にatomic replaceし、並走agentが途中状態を観測しないようにする。
 
 ## データの流れ
 
-1. CLIが組み込みadapter（`git.tracked_ignored`）経由でgitの標準コマンドを実行する。
-   legacy入口は互換用`exclude_standard` profile、汎用入口（`observe`）は`.gitignore`だけを見る
-   再現可能な`repo_only` profileを使う。
-2. Gitで追跡済みかつignore対象のパスを、NUL区切りのUTF-8として受け取る。
-   UTF-8として読めないパスはfail-closedで停止する。
-3. baselineのパス集合と比較する。
-4. 新規パスがなければ成功し、あれば修復案を表示して失敗する。
+1. CLIが組み込みadapter経由で対象をread-only観測する。
+   - `git.tracked_ignored`（既定）: legacy入口は互換用`exclude_standard` profile、汎用入口は
+     `.gitignore`だけを見る`repo_only` profile。
+   - `skill.provenance`（opt-in `--adapter skill.provenance --skills-root`）: 明示skills root配下の
+     tracked `SKILL.md` bundleを観測し、presence / digest / capability Findingを返す。
+2. Git列挙はNUL区切りUTF-8。UTF-8として読めないパス、malformed frontmatter、観測不能はfail-closed。
+3. `evaluate`がbaselineのfinding ID集合と比較する（legacyテキストbaselineは従来どおり）。
+4. 新規Findingがなければ成功し、あればdenyする。
 5. 明示されたbaseline更新時だけ、baselineファイルを書き換える。
 
 汎用契約では次のPDCAを各enforcement pointで繰り返す。

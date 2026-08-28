@@ -17,7 +17,8 @@ AI Ratchet Gateは、AIエージェントが変更するリポジトリ、memory
 
 ## 現在地: v0.1
 
-実装済みなのは、Gitの`tracked ∧ ignored`矛盾を対象にした最初のアダプターだけです。
+実装済みは、Gitの`tracked ∧ ignored`矛盾を対象にした最初のアダプターと、明示skills root配下の
+tracked skill bundleに対する`skill.provenance`（digest / permission expansion）です。
 Memory管理、skill生成、エージェント実行、品質全般の評価はまだ提供していません。
 
 ## Phase 1: 共通ラチェット契約
@@ -35,7 +36,9 @@ Memory管理、skill生成、エージェント実行、品質全般の評価は
 完了条件は、既存CLIとの互換性を保ち、同じ入力から同じ判定を再現できることです。
 
 実装順は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)に従う。schema・純関数、Git検査の
-adapter化、receipt、waiver検証（Next Action 1–4）は実装済み。次は第二adapterの個別設計。
+adapter化、receipt、waiver検証（Next Action 1–4）と、第二adapter
+`skill.provenance`（Next Action 5 / [ADR-0005](docs/adr/ADR-0005-skill-provenance-permission-expansion.md)）
+は実装済み。次はmemory等の後続adapterを個別設計する。
 
 ## Phase 2: AI運用向け参照アダプター
 
@@ -43,14 +46,16 @@ adapter化、receipt、waiver検証（Next Action 1–4）は実装済み。次�
 
 - memory: secret・個人情報・未承認ファイル参照など、決定論的に検査できる項目
 - skills: 出所、digest、許可されたtool／権限宣言の新規拡大
+  （MVP実装済み: `skill.provenance`。明示skills root・tracked bundle・read-onlyのみ。
+  SLSA/SkillLedger/Sigstore/runtime proxyは含まない）
 - agent設定: model、tool、外部送信先、書込権限の新規追加
 - eval: 固定fixtureに対する既知成功ケースの退行
 - repository: secret候補、生成物混入、個人pathなどの増分違反
 
 各アダプターは、対象形式、信頼境界、誤検知時の扱い、baseline更新手順を明示します。
 非決定的な評価値は、再現性と許容幅を定義できるまでdeny判定へ使いません。
-第二adapterの第一候補は、入力と期待値を決定論的に固定しやすいskill provenance、digest、
-tool権限拡大の検査です。secretやPIIを含み得るmemory検査は、証拠漏洩と誤検知の設計後に扱います。
+第二adapter（skill provenance / digest / permission expansion）はADR-0005として導入済みです。
+secretやPIIを含み得るmemory検査は、証拠漏洩と誤検知の設計後に扱います。
 
 ## Phase 3: エージェント横断の接続
 

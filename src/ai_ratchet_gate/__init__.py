@@ -1,6 +1,6 @@
 """人間確認済みfailureを実行可能な非回帰guardへ変える汎用gate。"""
 
-from .adapters import ScanContext, TrackedIgnoredAdapter
+from .adapters import ScanContext, SkillProvenanceAdapter, TrackedIgnoredAdapter
 from .engine import evaluate
 from .model import Decision, Finding, Observation, RatchetError
 from .receipt import build_receipt
@@ -37,6 +37,7 @@ __all__ = [
     "Observation",
     "RatchetError",
     "ScanContext",
+    "SkillProvenanceAdapter",
     "TrackedIgnoredAdapter",
     "WaiverDocument",
     "WaiverRecord",

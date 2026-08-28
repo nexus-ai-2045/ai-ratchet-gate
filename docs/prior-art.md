@@ -34,6 +34,10 @@ critical propertyをruntimeで監視し、必要な場合だけ出力を補正�
 は、守りたいarchitecture特性を継続的に測定し、変更時のfeedbackへ接続する。本ツールの各adapterは
 離散的なfitness functionに相当する。ただし安全軸を総合点へ集約せず、軸ごとの悪化を独立に止める。
 
+`skill.provenance`もこの意味での狭いfitness functionである。tracked skill bundleのpresence、
+bundle digest（SHA-256）、宣言されたtool / permissionの拡大だけを観測する。SLSA供給網保証、
+Sigstore署名検証、SkillLedger台帳、runtime mediationの代替ではない。
+
 ## Receding-horizon / MPC-inspired operation
 
 現在状態と提案された次状態を評価し、一段進んだ後に再観測・再計画する。これは長い自動計画を

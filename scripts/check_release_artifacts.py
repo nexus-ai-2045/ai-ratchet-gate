@@ -33,6 +33,7 @@ REQUIRED_WHEEL_SUFFIXES = (
     "ai_ratchet_gate/waiver.py",
     "ai_ratchet_gate/adapters/__init__.py",
     "ai_ratchet_gate/adapters/protocol.py",
+    "ai_ratchet_gate/adapters/skill_provenance.py",
     "ai_ratchet_gate/adapters/tracked_ignored.py",
 )
 REQUIRED_SDIST_MATCH_SUFFIXES = (
@@ -57,6 +58,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "docs/release.md",
     "docs/threat-model.md",
     "docs/adr/ADR-0001-generic-ratchet-engine.md",
+    "docs/adr/ADR-0005-skill-provenance-permission-expansion.md",
     "docs/adr/README.md",
     "scripts/verify.py",
     "scripts/check_release_artifacts.py",
@@ -71,6 +73,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "src/ai_ratchet_gate/waiver.py",
     "src/ai_ratchet_gate/adapters/__init__.py",
     "src/ai_ratchet_gate/adapters/protocol.py",
+    "src/ai_ratchet_gate/adapters/skill_provenance.py",
     "src/ai_ratchet_gate/adapters/tracked_ignored.py",
     "src/ai_ratchet_gate.egg-info/PKG-INFO",
     "src/ai_ratchet_gate.egg-info/SOURCES.txt",
@@ -84,6 +87,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "tests/test_package_metadata.py",
     "tests/test_release_artifacts.py",
     "tests/test_release_changelog.py",
+    "tests/test_skill_provenance.py",
     "tests/test_smoke_install_artifacts.py",
     "tests/test_waiver.py",
     "ai_ratchet_gate.py",

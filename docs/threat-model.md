@@ -3,6 +3,8 @@
 ## 守る対象
 
 - `tracked ∧ ignored` の矛盾を増やさないという不変条件
+- 明示skills root内のtracked skill bundleについて、新規skill・digest変化・permission expansionを
+  増やさないという不変条件（`skill.provenance`）
 - baseline変更を差分としてレビューできること
 - 検査不能を成功として扱わないこと
 - findingの安定した同一性と、軸ごとの新規悪化を相殺しないこと
@@ -12,6 +14,8 @@
 
 - `git add -f`によるignore対象ファイルの強制追加
 - 追跡済みファイルへ後から追加されたignoreルール
+- skills rootへの新規SKILL.md追加、bundle内容改変、allowed-tools拡大
+- malformed / 欠落frontmatterのSKILL.md
 - 日本語など非ASCII文字を含むパス
 - git実行不能、対象パス不正、baseline欠落
 - baselineの意図しない拡大やskipの常用
@@ -26,13 +30,14 @@
 ## 対応
 
 - gitのNUL区切り出力を使い、パスの曖昧な分割を避ける
-- baselineにない新規パスをdenyする
+- baselineにない新規パス / Findingをdenyする
 - git実行失敗とbaseline欠落ではfail-closedにする
+- skill adapterは明示skills rootのみ走査し、symlink・不正frontmatterをfail-closedにする
 - baseline更新とskipを人間レビュー対象として運用文書に残す
 - 未知schema、identity不一致、重複IDをfail-closedにする。期限付きwaiverはbaselineと分離し、
   レビュー済みファイルだけを消費する。追加・延長・scope変更の自動承認はしない
 - repo-relative pathと正規化規則を固定し、repo外参照を拒否する
-- JSON入力にbyte上限、finding件数と各文字列に上限を設ける。外部adapterのtimeoutは次段階で追加する
+- JSON入力にbyte上限、finding件数と各文字列に上限を設ける。adapterのgit列挙にtimeoutを設ける
 - receiptへbaselineとobservationのdigestを記録し、CLIで期待subjectとの一致を検証する
 - evidence本文を既定で埋めず、安全な要約とdigestを使う
 - baselineとreceiptは同一directoryの一時fileへ排他的に書き、`fsync`後のatomic replaceで
@@ -44,6 +49,7 @@
 ## 対象外
 
 - secret、malware、依存関係脆弱性、コード品質全般の検出
+- skillのruntime mediation、署名検証（Sigstore）、transparency log、SkillLedger、OPA/Rego
 - hookを通らないcommit経路の強制阻止
 - 悪意ある利用者によるコード、baseline、CI設定そのものの改変
 - 任意の第三者adapterを安全に隔離するsandbox

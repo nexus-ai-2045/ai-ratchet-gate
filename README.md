@@ -20,7 +20,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 層 | 中身 | 汎用性 |
 |---|---|---|
 | core (`engine` / `model` / `receipt`) | 安定Finding IDの集合比較・mode判定・digest付きreceipt | 対象を問わない (gitを知らない) |
-| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` の 1 個だけ |
+| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。`git.tracked_ignored` と `skill.provenance` |
 | baseline / waiver | レビュー済みの見逃しリスト | 形式は汎用、中身は対象ごと |
 
 つまり「git事故ツール」は入口の見た目で、実体は**任意の決定論的検査をratchet化する枠**です。
@@ -32,10 +32,11 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 対象 | 状態 |
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
-| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記 1 個) |
+| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。`git.tracked_ignored` 既定) |
+| skill provenance (`skill.provenance`) | 提供中 (opt-in。`--adapter skill.provenance --skills-root`) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
-| memory / skills / tool権限 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
+| memory / PII / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
 
