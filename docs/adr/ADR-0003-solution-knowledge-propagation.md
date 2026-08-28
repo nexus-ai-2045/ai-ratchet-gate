@@ -38,18 +38,22 @@ fail-closedとする。
 
 問題検出後、合成済みknowledgeを参照する。
 
-- 既知: `known / verified_solution_available` を返し、harnessがresolverを適用して再検証する
+- 既知: `known / verified_solution_available` を返し、検証済みremediation（resolver identityと証拠）を返す
 - 未知: `unknown / no_verified_solution` として人または上位agentへ返す
 
-未知問題を解決し、独立再現と回帰testが取れた後、人間レビューを経てcentralへ昇格できる。
+resolverの適用はgateの成功条件に含めない。適用は明示的な人間承認またはharness指示の後にのみ行い、
+対象repoをgateが自動変更することはない。未知問題を解決し、独立再現と回帰testが取れた後、
+人間レビューを経てcentralへ昇格できる。
 
 ### 4. ai-ratchet-gate本体は対象repoを直接変更しない
 
 既存のread-only安全境界を維持する。ai-ratchet-gateは解法の選択、schema検証、曖昧性検出、
-receipt生成を担い、実際の変更適用は外側のagent harness / orchestratorが担う。
+receipt生成を担い、検証済みremediationを返すところまでとする。実際の変更適用は外側の
+agent harness / orchestratorが、明示的な人間/harnessアクションの後にのみ担う。
 
-resolverは`resolver_id + resolver_version`で固定し、harnessは適用後に必ず同じdetector / testsを
+resolverは`resolver_id + resolver_version`で固定し、適用した場合は必ず同じdetector / testsを
 再実行する。検証に失敗したresolverは成功としてknowledgeへ蓄積しない。
+central昇格・merge・release・settings・secret/auth変更は人間停止線を維持する。
 
 ## Promotion gate
 
@@ -68,15 +72,16 @@ LLMの主観的な「直ったと思う」だけでは昇格しない。
 
 1. **Detect**: detectorが問題を`problem_key`へ正規化する
 2. **Lookup**: central + local knowledgeを決定論的に合成する
-3. **Resolve**: 既知ならharnessがresolverを適用する
-4. **Verify**: detector + testsで解決を再検証する
+3. **Resolve**: 既知なら検証済みremediationを返す。resolver適用は明示的な人間/harnessアクションの後にのみ行う
+4. **Verify**: 適用した場合のみ、detector + testsで解決を再検証する
 5. **Receipt**: 使用したknowledge ID、resolver version、input/output SHA、検証結果を残す
 6. **Learn**: 未知問題だけ人へ返し、解決後にlocalへ記録する
 7. **Promote**: 汎用性と証拠が揃ったものだけcentralへレビュー昇格する
 8. **Propagate**: 他repoは次回lookupから同じcentral knowledgeを利用する
 
-このループの成功状態は「既知問題を止め続けること」ではなく、**既知問題を人へ戻さず解決し、
-検証して通過させること**である。
+gateが保証する成功状態は「既知問題に対して検証済み解法を決定論的に選択して返すこと」である。
+対象repoへの自動mutation、central昇格、merge、release、secret/auth変更を成功条件にしない。
+人間停止線を迂回する「見た目だけ安全」なskip/refuseも成功にしない。
 
 ## MVP completion criteria
 
@@ -84,8 +89,9 @@ LLMの主観的な「直ったと思う」だけでは昇格しない。
 - local overrideを含めて決定論的に合成できる
 - repo A由来のcentral knowledgeがrepo B相当の同一`problem_key`で選択されるtestがある
 - unknown problemは偽成功せずhuman-resolutionへ返る
-- 曖昧なresolver定義はfail-closedになる
-- 対象repo mutationはai-ratchet-gate本体へ入れず、harness境界を維持する
+- 曖昧なresolver定義および同一identityの矛盾metadataはfail-closedになる
+- unsupported scopeの空manifestは偽の空成功にせずfail-closedになる
+- 対象repo mutationはai-ratchet-gate本体へ入れず、明示的な人間/harnessアクション境界を維持する
 
 ## Consequences
 

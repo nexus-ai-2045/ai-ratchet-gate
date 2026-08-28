@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -12,6 +13,7 @@ from .model import Decision, Observation, RatchetError
 
 KNOWLEDGE_SCHEMA = "ai-ratchet-gate.solution-knowledge/v1"
 MAX_KNOWLEDGE_ENTRIES = 10_000
+ALLOWED_KNOWLEDGE_SCOPES = frozenset({"central", "local"})
 
 
 def evaluate(
@@ -63,7 +65,8 @@ def _canonical(value: object) -> bytes:
 def _nonempty(value: object, name: str) -> str:
     if type(value) is not str or not value or "\x00" in value:
         raise RatchetError(f"invalid_{name}")
-    return value
+    # model.Finding と同じく Unicode NFC へ揃えてから identity / lookup する
+    return unicodedata.normalize("NFC", value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +100,7 @@ class SolutionKnowledge:
         resolver = _nonempty(resolver_id, "resolver_id")
         version = _nonempty(resolver_version, "resolver_version")
         normalized_scope = _nonempty(scope, "scope")
-        if normalized_scope not in {"central", "local"}:
+        if normalized_scope not in ALLOWED_KNOWLEDGE_SCOPES:
             raise RatchetError("invalid_scope")
         evidence = _nonempty(evidence_sha256, "evidence_sha256")
         if re.fullmatch(r"[0-9a-f]{64}", evidence) is None:
@@ -159,6 +162,9 @@ class Resolution:
 def load_knowledge_document(
     value: object, *, expected_scope: str
 ) -> tuple[SolutionKnowledge, ...]:
+    # empty manifestでも typo scope (例: global) を偽成功させない
+    if type(expected_scope) is not str or expected_scope not in ALLOWED_KNOWLEDGE_SCOPES:
+        raise RatchetError("invalid_scope")
     if not isinstance(value, dict) or set(value) != {"schema", "scope", "entries"}:
         raise RatchetError("invalid_knowledge_document")
     if value["schema"] != KNOWLEDGE_SCHEMA or value["scope"] != expected_scope:
@@ -189,8 +195,11 @@ def compose_knowledge(
             if entry.scope != scope:
                 raise RatchetError("knowledge_scope_mismatch")
             previous = result.get(entry.problem_key)
-            if previous is not None and previous.knowledge_id != entry.knowledge_id:
-                raise RatchetError("ambiguous_problem_resolution")
+            if previous is not None and previous != entry:
+                if previous.knowledge_id != entry.knowledge_id:
+                    raise RatchetError("ambiguous_problem_resolution")
+                # 同一 knowledge_id でも evidence/source 等が食い違う場合は last-wins しない
+                raise RatchetError("conflicting_knowledge_metadata")
             result[entry.problem_key] = entry
         return result
 
@@ -203,9 +212,14 @@ def resolve_problem(
     problem_key: str,
     knowledge: dict[str, SolutionKnowledge],
 ) -> Resolution:
-    """既知問題はresolver選択へ、未知問題だけhuman-resolutionへ送る。"""
+    """既知問題は検証済みremediationを返し、未知問題だけhuman-resolutionへ送る。
+
+    対象repoへのresolver適用は本関数の責務外。明示的な人間/harnessアクションの後に行う。
+    """
     key = _nonempty(problem_key, "problem_key")
     selected = knowledge.get(key)
     if selected is None:
         return Resolution(key, "unknown", None, "no_verified_solution")
+    if selected.problem_key != key:
+        raise RatchetError("problem_key_mismatch")
     return Resolution(key, "known", selected, "verified_solution_available")
