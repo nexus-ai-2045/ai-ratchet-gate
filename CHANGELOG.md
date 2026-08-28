@@ -6,6 +6,11 @@
 
 ### 追加
 
+- 期限付きwaiver schema（`ai-ratchet-gate.waivers/v1`）と`evaluate --waiver`。baseline（grandfather）と
+  分離し、finding ID・observation digest・review binding・有効期限へ束縛する。追加・延長・scope変更の
+  自動承認入口は持たない
+- 脅威モデル上の安価なゲーム（非決定ID、path/理由の偽装、baseline拡大と解消の混同）に対する回帰テスト
+
 - legacy CLIにratchet可視化バナー。denyは「🔒 RATCHET DENY: 新規悪化 N 件を阻止 (grandfather 済み M 件は通過中)」、
   allowも「🔓 RATCHET OK: 新規 0 / baseline M 件を監視中」で、ratchetが効いている状態を毎回明示する
   (exit code・receiptは不変。機械連携は壊さない)
@@ -26,6 +31,7 @@
 - adapterはmerge未解決indexの複数stageで重複する同一パスを1 findingへ潰す
 - legacy CLIは非UTF-8パスをU+FFFDへ置換せず、fail-closedで停止する
 - legacy CLIのexit codeを`evaluate`と揃え、git列挙失敗とbaseline欠落は違反（`1`）と区別して`2`を返す
+- receiptのdecisionへ`waived`を追加（waiver未使用時は空配列）
 
 ### 互換性
 
@@ -33,12 +39,14 @@
   legacy入口の観測面（`--exclude-standard`互換）も維持
 - 観測不能時のexit codeは`1`から`2`へ変更。hookで`!= 0`判定している利用者には影響しない
 - 新しい汎用判定は`observe` / `evaluate` subcommandとしてopt-in提供
+- waiver契約は`--waiver`指定時のみ有効。未指定時の既存evaluate挙動は維持
 
 ### 安全性
 
 - legacy CLIのGit観測を組み込み`TrackedIgnoredAdapter`へ委譲しつつ、互換用`exclude_standard` profileで従来の観測面を維持
 - baselineとreceiptを同一directoryの一時fileからatomic replaceし、途中書込みを公開しない。既存modeを保持し、新規fileは`0644`
 - symlink作成能力がないWindowsでは、symlink専用回帰テストを環境能力skipとして分類
+- 期限切れ・scope外・review binding不一致・未知schemaのwaiverはfail-closed。一軸のwaiverで他軸の新規悪化を相殺しない
 
 ## [0.1.1] - 2026-08-19
 

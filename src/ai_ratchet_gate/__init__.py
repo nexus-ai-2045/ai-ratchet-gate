@@ -4,6 +4,13 @@ from .adapters import ScanContext, TrackedIgnoredAdapter
 from .engine import evaluate
 from .model import Decision, Finding, Observation, RatchetError
 from .receipt import build_receipt
+from .waiver import (
+    WaiverDocument,
+    WaiverRecord,
+    observation_digest,
+    review_binding_sha256,
+    select_waived_finding_ids,
+)
 
 from .cli import (
     BASELINE_HEADER,
@@ -31,8 +38,13 @@ __all__ = [
     "RatchetError",
     "ScanContext",
     "TrackedIgnoredAdapter",
+    "WaiverDocument",
+    "WaiverRecord",
     "build_receipt",
     "evaluate",
+    "observation_digest",
+    "review_binding_sha256",
+    "select_waived_finding_ids",
 ]
 
 __version__ = "0.1.1"

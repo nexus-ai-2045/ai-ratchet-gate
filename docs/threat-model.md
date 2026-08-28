@@ -29,7 +29,8 @@
 - baselineにない新規パスをdenyする
 - git実行失敗とbaseline欠落ではfail-closedにする
 - baseline更新とskipを人間レビュー対象として運用文書に残す
-- 未知schema、identity不一致、重複IDをfail-closedにする。waiver検証は次段階で追加する
+- 未知schema、identity不一致、重複IDをfail-closedにする。期限付きwaiverはbaselineと分離し、
+  レビュー済みファイルだけを消費する。追加・延長・scope変更の自動承認はしない
 - repo-relative pathと正規化規則を固定し、repo外参照を拒否する
 - JSON入力にbyte上限、finding件数と各文字列に上限を設ける。外部adapterのtimeoutは次段階で追加する
 - receiptへbaselineとobservationのdigestを記録し、CLIで期待subjectとの一致を検証する
@@ -37,7 +38,8 @@
 - baselineとreceiptは同一directoryの一時fileへ排他的に書き、`fsync`後のatomic replaceで
   途中状態を公開しない。置換失敗時は既存fileを維持し、一時fileを回収する。既存fileのmodeは
   保持し、新規fileは`0644`とする
-- 次段階のwaiverはbaselineと分離し、wildcardおよび無期限waiverを許可しない
+- waiverはfinding IDとobservation digest、review bindingへ束縛する。wildcardおよび無期限waiverを
+  許可しない。期限切れ・scope不一致・binding改ざんはfail-closed（適用拒否または判定不能）
 
 ## 対象外
 
