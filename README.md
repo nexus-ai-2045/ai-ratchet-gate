@@ -33,6 +33,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
 | 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記 1 個) |
+| 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | memory / skills / tool権限 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
@@ -112,14 +113,23 @@ ai-ratchet-gate evaluate \
   --baseline baseline.json \
   --expected-subject repo:owner/name@COMMIT_SHA \
   --receipt receipt.json
+
+# 任意: レビュー済みの期限付きwaiver（baselineとは別ファイル）
+ai-ratchet-gate evaluate \
+  --observation observation.json \
+  --baseline baseline.json \
+  --waiver waivers.json \
+  --expected-subject repo:owner/name@COMMIT_SHA \
+  --receipt receipt.json
 ```
 
 exit codeはallow=`0`、deny=`1`、schema不明や観測不能=`2`です。`--subject`と
 `--expected-subject`はenforcement側（hook / CI）が固定し、利用者入力から組み立てないでください。
 `evaluate --mode observe`は新規findingがあってもexit 0を返す観測専用modeなので、
 enforcement側では`--mode`を渡さない（既定`ratchet`）か`strict`に固定してください。
-baselineの拡大、waiver、ruleのenforce昇格は自動承認しません。契約詳細は
-[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
+baselineの拡大、waiverの追加・延長・scope変更、ruleのenforce昇格は自動承認しません。
+`--waiver`は人間がレビューした`ai-ratchet-gate.waivers/v1`を消費するだけで、coreが承認する入口ではありません。
+契約詳細は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
 
 ### AIを使う人
 

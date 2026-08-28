@@ -3,7 +3,7 @@ title: 汎用ラチェットengineとadapter境界
 type: adr
 status: accepted
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-28
 owner: nexus-ai-2045
 related:
   - ../../ROADMAP.md
@@ -90,5 +90,6 @@ scan、receipt、baseline縮小候補、修復候補の生成までは自動化�
 1. characterization testで既存CLI契約を固定する。
 2. Finding、Observation、Decision、Receiptのversioned schemaを導入する。
 3. `tracked ∧ ignored`を参照adapterへ移す。
-4. waiver検証と脅威モデルの回帰テストを追加する。
+4. ~~waiver検証と脅威モデルの回帰テストを追加する。~~（実装済み: `ai-ratchet-gate.waivers/v1`、
+   `evaluate --waiver`、期限・scope・review bindingのfail-closed、安価なゲームの回帰テスト）
 5. 第二adapterは決定論的なskill provenance / permission expansionを第一候補として個別設計する。
