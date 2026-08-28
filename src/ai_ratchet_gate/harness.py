@@ -202,6 +202,15 @@ def build_resolver_registry(
     return registry
 
 
+def _snapshot(target: Any, callback: Callable[[Any], str], name: str) -> str:
+    try:
+        return _sha256(callback(target), name)
+    except RatchetError:
+        raise
+    except Exception as error:
+        raise RatchetError("snapshot_failed") from error
+
+
 def _verify_without_mutation(
     target: Any,
     problem_key: str,
@@ -213,10 +222,13 @@ def _verify_without_mutation(
     try:
         verification = verify(target, problem_key)
     except Exception as error:
+        observed = _snapshot(target, snapshot, "verification_state_sha256")
+        if observed != expected_sha256:
+            raise RatchetError("verifier_mutated_target") from error
         raise RatchetError("verifier_failed") from error
     if not isinstance(verification, Verification):
         raise RatchetError("invalid_verification_result")
-    observed = _sha256(snapshot(target), "verification_state_sha256")
+    observed = _snapshot(target, snapshot, "verification_state_sha256")
     if observed != expected_sha256:
         raise RatchetError("verifier_mutated_target")
     return verification
@@ -237,12 +249,7 @@ def run_resolution_loop(
         raise RatchetError("invalid_harness_callback")
     subject_value = _nonempty(subject, "subject")
     context = _sha256(knowledge_context_sha256, "knowledge_context_sha256")
-    try:
-        before = _sha256(snapshot(target), "before_sha256")
-    except RatchetError:
-        raise
-    except Exception as error:
-        raise RatchetError("snapshot_failed") from error
+    before = _snapshot(target, snapshot, "before_sha256")
 
     if resolution.status == "unknown":
         if resolution.knowledge is not None:
@@ -301,12 +308,7 @@ def run_resolution_loop(
     except Exception as error:
         raise RatchetError("resolver_apply_failed") from error
 
-    try:
-        after = _sha256(snapshot(target), "after_sha256")
-    except RatchetError:
-        raise
-    except Exception as error:
-        raise RatchetError("snapshot_failed") from error
+    after = _snapshot(target, snapshot, "after_sha256")
     post = _verify_without_mutation(
         target,
         resolution.problem_key,
