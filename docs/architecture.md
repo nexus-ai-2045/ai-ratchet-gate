@@ -54,7 +54,8 @@ legacy CLIも`TrackedIgnoredAdapter`へ内部委譲し、Git観測の実装を�
    `executable_asset`を独立軸とする。`scripts/`のpayload digestはdeny軸。
    `SKILL.md`本文だけの変更はevidenceのみ（finding ID不変）。
    testでは`unconditional_skip` / `focused_only` / `hollow_test`を独立軸とし、
-   `subject_kind=test_case` / `subject_key=file::test-name`（NFC）。
+   `subject_kind=test_case` / `subject_key=file::qualified-name`（NFC。class/suite連結。
+   タイトルの`/`は符号化）。
    `focused_only`は既存`strict` modeで常時deny（新契約ではない）。
 3. baselineのfinding ID集合と比較する。
 4. 新規findingがなければ成功し、あれば修復案を表示して失敗する。

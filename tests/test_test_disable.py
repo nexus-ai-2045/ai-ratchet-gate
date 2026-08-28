@@ -586,3 +586,167 @@ def test_hollow_improvement_resolves(tmp_path: Path) -> None:
     assert decision.status == "allow"
     assert decision.resolved == tuple(sorted(baseline_ids))
     assert after.findings == ()
+
+
+def test_python_class_context_disambiguates_same_method_names(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path,
+        "tests/test_classes.py",
+        "class TestA:\n"
+        "    def test_same(self):\n"
+        "        pass\n"
+        "\n"
+        "class TestB:\n"
+        "    def test_same(self):\n"
+        "        pass\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    hollow = _by_rule(observation, "hollow_test")
+    assert {item.subject_key for item in hollow} == {
+        "tests/test_classes.py::TestA::test_same",
+        "tests/test_classes.py::TestB::test_same",
+    }
+    assert len({item.finding_id for item in hollow}) == 2
+
+
+def test_js_suite_context_disambiguates_same_titles(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "src/suite.test.js",
+        "describe('alpha', () => {\n"
+        "  test.skip('same', () => { expect(1).toBe(1); });\n"
+        "});\n"
+        "describe('beta', () => {\n"
+        "  test.skip('same', () => { expect(1).toBe(1); });\n"
+        "});\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    skips = _by_rule(observation, "unconditional_skip")
+    assert {item.subject_key for item in skips} == {
+        "src/suite.test.js::alpha::same",
+        "src/suite.test.js::beta::same",
+    }
+    assert len({item.finding_id for item in skips}) == 2
+
+
+def test_js_expression_bodied_hollow_callback(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "src/expr.test.js",
+        "test('hollow expr', () => expect(true).toBe(true));\n"
+        "test('real expr', () => expect(1 + 1).toBe(2));\n"
+        "test('hollow then real', () => expect(true).toBe(true));\n"
+        "test('block real', () => { expect(2).toBe(2); });\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    assert {item.subject_key for item in _by_rule(observation, "hollow_test")} == {
+        "src/expr.test.js::hollow expr",
+        "src/expr.test.js::hollow then real",
+    }
+
+
+def test_js_comments_and_strings_do_not_emit_findings(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "src/noise.test.js",
+        "// test.only('commented only', () => {});\n"
+        "/* test.skip('block comment', () => {}); */\n"
+        "const example = \"test.skip('in string', () => {});\";\n"
+        "test('real', () => { expect(1).toBe(1); });\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    assert observation.findings == ()
+
+
+def test_python_skipped_class_methods_are_not_hollow(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "tests/test_skipped_class.py",
+        "import pytest\n"
+        "\n"
+        "@pytest.mark.skip\n"
+        "class TestMuted:\n"
+        "    def test_empty(self):\n"
+        "        pass\n"
+        "\n"
+        "    def test_assert_true(self):\n"
+        "        assert True\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    assert {item.subject_key for item in _by_rule(observation, "unconditional_skip")} == {
+        "tests/test_skipped_class.py::TestMuted",
+    }
+    assert _by_rule(observation, "hollow_test") == []
+
+
+def test_python_stream_skip_is_not_c1(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "tests/test_stream.py",
+        "class Stream:\n"
+        "    def skip(self, n):\n"
+        "        return n\n"
+        "\n"
+        "def test_reads():\n"
+        "    stream = Stream()\n"
+        "    stream.skip(1)\n"
+        "    assert 1 == 1\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    assert _by_rule(observation, "unconditional_skip") == []
+    assert _by_rule(observation, "hollow_test") == []
+
+
+def test_python_testcase_inheritance_without_test_name_prefix(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path,
+        "tests/test_integration_case.py",
+        "import unittest\n"
+        "\n"
+        "@unittest.skip('muted')\n"
+        "class Integration(unittest.TestCase):\n"
+        "    def test_a(self):\n"
+        "        self.assertEqual(1, 1)\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    assert {item.subject_key for item in _by_rule(observation, "unconditional_skip")} == {
+        "tests/test_integration_case.py::Integration",
+    }
+    assert _by_rule(observation, "hollow_test") == []
+
+
+def test_js_title_with_slash_is_encoded_in_subject_key(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "src/paths.test.js",
+        "test.skip('handles /../ paths', () => { expect(1).toBe(1); });\n"
+        "test.skip('a/../b', () => { expect(1).toBe(1); });\n",
+    )
+    observation = TestDisableAdapter().observe(
+        ScanContext(tmp_path, "repo:tests@1")
+    )
+    skips = _by_rule(observation, "unconditional_skip")
+    assert {item.subject_key for item in skips} == {
+        "src/paths.test.js::handles %2F..%2F paths",
+        "src/paths.test.js::a%2F..%2Fb",
+    }
+    # Finding.create が path traversal と誤認しないこと
+    assert len(skips) == 2

@@ -44,7 +44,7 @@
 - skillの安定キーはrepo相対pathとし、declared nameへの静かな合流を避ける
 - `scripts/` payload digestを`executable_asset`のsubject_keyへ含め、内容改変をdenyする
 - `SKILL.md`本文digestはevidenceのみ（本文のみ編集ではfinding ID不変）
-- テスト走査のsymlink・非UTF-8・曖昧構文はfail-closed。安定キーは`file::test-name`（NFC）
+- テスト走査のsymlink・非UTF-8・曖昧構文はfail-closed。安定キーは`file::qualified-name`（NFC。`/`符号化）
 - `focused_only`は既存`strict` modeで1件でもdeny（新契約を増やさない）
 - 自由記述skip reasonは許可条件にせず、例外は既存`waivers/v1`だけを消費する
 - 一軸のwaiverや改善で他軸（例: tool拡大とscripts digest変更）を相殺しない

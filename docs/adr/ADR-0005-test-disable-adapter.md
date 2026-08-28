@@ -39,18 +39,28 @@ assert）はスコープ外。自由記述のskip reasonは許可条件にしな
 | `focused_only` | C2 | `.only` / `fit` / `fdescribe` | 既存`strict`（1件でもdeny）。新契約ではない |
 | `hollow_test` | C3 | 空本体または`assert True`/`expect(true)`のみ | `ratchet` |
 
-- `subject_kind`は常に`test_case`。`subject_key`は`{repo相対path}::{test_name}`（NFC）。
-  pathまたはtest_nameに`::`を含む場合はfail-closed。
+- `subject_kind`は常に`test_case`。`subject_key`は
+  `{repo相対path}::{qualified_name}`（NFC）。
+  `qualified_name`は囲むclass / `describe` suiteを`::`で連結した識別子
+  （例: `TestFoo::test_bar`、`outer::inner::title`）。
+  pathに`::`を含む場合、または各成分に`::`を含む場合はfail-closed。
+  タイトル内の`/`は`%2F`へ符号化し、Findingのpath分割と衝突させない。
 - C1: `@pytest.mark.skip` / `@unittest.skip` / 本体先頭の`pytest.skip()` /
-  `raise SkipTest` / `test.skip` / `it.skip` / `xit` / `describe.skip` 等。
+  `self.skipTest()` / `raise SkipTest` / `test.skip` / `it.skip` / `xit` /
+  `describe.skip` 等。任意の`.skip`属性呼び出し（例: `stream.skip(1)`）は対象外。
   **`skipif` / `skipIf`（条件付き）はC1に含めない**（別物）。さらにskipif付きテストは
   実行されない可能性があるため**C3 hollowにもしない**（hollowは実行されるテストだけ）。
+  無条件skip済みclass配下のmethodもhollowにしない。
   reason文字列の有無は許可条件にしない。
 - C2: `test.only` / `it.only` / `describe.only` / `fit` / `fdescribe`。pytestに構文等価はなく、
-  CLIの`-k`/`-m`は静的観測外。
+  CLIの`-k`/`-m`は静的観測外。コメント・文字列リテラル内の見かけの呼び出しは検出しない。
 - C3: 空body、または恒真assertのみ。**実行されるテストだけ**が対象。
-  `test.todo`は正当な未実装申告でありhollowではない。無条件skip済みもhollowではない。
-- Pythonは`ast`で解析する。JS/TSは保守的な構文走査（完全なTS parserは持ち込まない）。
+  JSの expression-bodied callback（`() => expect(true).toBe(true)`）も対象。
+  境界が取れないcallbackはfail-closed。`test.todo`は正当な未実装申告でありhollowではない。
+  無条件skip済みもhollowではない。
+- Pythonのunittest収集対象は、名前が`Test*`/`*Test`のclassに加え、
+  `unittest.TestCase`（および`TestCase`）を継承するclassも含める。
+- Pythonは`ast`で解析する。JS/TSは保守的な構文走査（完全な TS parser は持ち込まない）。
 - LLM判定なし。OPA/Regoなし。
 
 ## Allowed
