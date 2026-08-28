@@ -44,8 +44,8 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 返した安定Finding IDをレビュー済みbaselineと比較し、`accepted / new / resolved`を機械判定して
 入力digest付きreceiptを返します。Gitの`tracked ∧ ignored`検査は既存CLI互換を維持しています。
 
-同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、将来memory、skills、
-tool権限、agent設定、evalなどへ適用できます。Hermes Agentなどが
+同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、将来memory、
+agent設定、evalなどへ適用できます。Hermes Agentなどが
 知識や手順を学習・再利用する層だとすれば、本ツールはその変化が安全基準を後退させていないかを
 外側から決定論的に検査する補完層です。
 
