@@ -9,6 +9,10 @@ Exit codes:
     0: valid (no findings)
     1: semantic policy findings present; do not render
     2: malformed/ambiguous input or tool failure; fail closed
+
+The CLI is read-only. It emits a validation receipt-like envelope to stdout. A
+renderer must verify `document_sha256` against the exact canonical document it will
+present; exit 0 alone must not authorize reopening an unbound mutable file.
 """
 
 from __future__ import annotations
@@ -18,13 +22,13 @@ import json
 import os
 import stat
 import sys
-import tempfile
 from pathlib import Path
 
 from .fact_output import canonical_sha256, observe_fact_output
 from .model import RatchetError
 
 MAX_JSON_BYTES = 2 * 1024 * 1024
+VALIDATION_SCHEMA = "ai-ratchet-gate.fact-output-validation/v1"
 
 
 def _reject_duplicate_object_names(
@@ -66,42 +70,6 @@ def _read_json(path: Path) -> object:
         raise RatchetError("invalid_json_input") from error
 
 
-def _paths_alias(left: Path, right: Path) -> bool:
-    try:
-        if left.exists() and right.exists() and os.path.samefile(left, right):
-            return True
-    except OSError:
-        pass
-    try:
-        return left.resolve() == right.resolve()
-    except OSError:
-        return False
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    target_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
-    descriptor, raw_temp = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    )
-    temp = Path(raw_temp)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            os.chmod(temp, target_mode)
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, path)
-    except BaseException:
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-
-
 def _emit_utf8(text: str) -> None:
     encoded = text.encode("utf-8")
     buffer = getattr(sys.stdout, "buffer", None)
@@ -121,18 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
     parser.add_argument("--subject", required=True)
-    parser.add_argument(
-        "--out",
-        type=Path,
-        help="observation JSON出力先。省略時はstdoutへ出力",
-    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
-        inputs = (args.document, args.policy, args.evidence)
-        if args.out is not None and any(_paths_alias(args.out, path) for path in inputs):
-            raise RatchetError("output_path_aliases_input")
-
         document = _read_json(args.document)
         policy = _read_json(args.policy)
         evidence = _read_json(args.evidence)
@@ -142,38 +101,28 @@ def main(argv: list[str] | None = None) -> int:
             evidence,
             subject=args.subject,
         )
-        text = json.dumps(
-            observation.to_dict(),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ) + "\n"
-        if len(text.encode("utf-8")) > MAX_JSON_BYTES:
-            raise RatchetError("observation_too_large")
-
-        if args.out is not None:
-            _atomic_write_text(args.out, text)
-            _emit_utf8(
-                json.dumps(
-                    {
-                        "status": "allow" if not observation.findings else "deny",
-                        "finding_count": len(observation.findings),
-                        "observation": str(args.out),
-                        "policy_sha256": canonical_sha256(policy),
-                        "evidence_sha256": canonical_sha256(evidence),
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-                + "\n"
+        result = {
+            "schema": VALIDATION_SCHEMA,
+            "status": "allow" if not observation.findings else "deny",
+            "document_sha256": canonical_sha256(document),
+            "policy_sha256": canonical_sha256(policy),
+            "evidence_sha256": canonical_sha256(evidence),
+            "observation": observation.to_dict(),
+        }
+        _emit_utf8(
+            json.dumps(
+                result,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
             )
-        else:
-            _emit_utf8(text)
+            + "\n"
+        )
         return 0 if not observation.findings else 1
     except (RatchetError, OSError) as error:
         _emit_utf8(
             json.dumps(
-                {"status": "tool_error", "error": str(error)},
+                {"schema": VALIDATION_SCHEMA, "status": "tool_error", "error": str(error)},
                 ensure_ascii=False,
                 sort_keys=True,
             )
