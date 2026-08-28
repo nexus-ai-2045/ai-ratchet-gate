@@ -110,3 +110,56 @@ def test_knowledge_document_validates_scope_and_identity() -> None:
     document["entries"][0]["resolver_id"] = "tampered"
     with pytest.raises(RatchetError, match="knowledge_id_mismatch"):
         load_knowledge_document(document, expected_scope="central")
+
+
+def test_empty_manifest_with_unsupported_scope_fails_closed() -> None:
+    document = {
+        "schema": KNOWLEDGE_SCHEMA,
+        "scope": "global",
+        "entries": [],
+    }
+
+    with pytest.raises(RatchetError, match="invalid_scope"):
+        load_knowledge_document(document, expected_scope="global")
+
+
+def test_solution_keys_are_normalized_to_nfc_before_identity() -> None:
+    nfc = "caf\u00e9.problem"
+    nfd = "cafe\u0301.problem"
+    first = _knowledge("central", nfc, "resolver.one")
+    second = _knowledge("central", nfd, "resolver.one")
+
+    assert first.problem_key == nfc
+    assert second.problem_key == nfc
+    assert first.knowledge_id == second.knowledge_id
+
+    resolution = resolve_problem(nfd, compose_knowledge([first], []))
+    assert resolution.status == "known"
+    assert resolution.problem_key == nfc
+    assert resolution.knowledge is not None
+    assert resolution.knowledge.knowledge_id == first.knowledge_id
+
+
+def test_same_identity_with_conflicting_metadata_fails_closed() -> None:
+    first = _knowledge("central", "same-problem", "resolver.one")
+    conflicting = SolutionKnowledge.create(
+        problem_key=first.problem_key,
+        resolver_id=first.resolver_id,
+        resolver_version=first.resolver_version,
+        scope=first.scope,
+        evidence_sha256=_digest("different-evidence"),
+        source="repo:example/other#review-2",
+    )
+
+    assert first.knowledge_id == conflicting.knowledge_id
+    with pytest.raises(RatchetError, match="conflicting_knowledge_metadata"):
+        compose_knowledge([first, conflicting], [])
+
+
+def test_resolve_problem_rejects_mismatched_selected_key() -> None:
+    entry = _knowledge("central", "expected.problem", "resolver.one")
+    poisoned = {entry.problem_key: entry}
+    poisoned["other.problem"] = entry
+
+    with pytest.raises(RatchetError, match="problem_key_mismatch"):
+        resolve_problem("other.problem", poisoned)
