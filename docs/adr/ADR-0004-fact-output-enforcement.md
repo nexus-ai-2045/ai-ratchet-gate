@@ -8,7 +8,8 @@
 
 Agent instructions that say “cite facts” or “mark uncertainty” are useful guidance, but guidance alone is
 not a structural guarantee. A runtime can still emit an unlabeled or unsupported claim and present it to a
-human before any deterministic check runs.
+human before any deterministic check runs. Requiring a non-empty `source` string is also insufficient: a
+model can invent a plausible-looking source identifier.
 
 The repository already separates deterministic observation/decision from model behavior. ADR-0003 adds
 verified solution knowledge, but knowledge reuse does not itself guarantee that a user-visible response
@@ -23,31 +24,38 @@ source) stay in that project's reviewed policy/SSOT.
 This design follows established policy-enforcement and structured-output patterns:
 
 1. produce a machine-readable envelope before presentation,
-2. validate against a reviewed schema/policy,
-3. fail closed on malformed or ambiguous input,
-4. allow rendering only after the enforcement point succeeds.
+2. bind references to data supplied by a trusted outer runtime,
+3. validate against reviewed schema/policy,
+4. fail closed on malformed or ambiguous input,
+5. allow rendering only after the enforcement point succeeds.
 
 Provider-native structured output can reduce malformed envelopes, but the deterministic validator remains
 necessary because provider capability and runtime integration differ.
 
 ## Decision
 
-Add an agent-independent `agent.fact_output` adapter with two inputs:
+Add an agent-independent `agent.fact_output` adapter with three independent inputs:
 
-- `fact-output/v1` document: an ordered set of claims (`key`, `label`, `text`, `source`),
-- `fact-output-policy/v1`: allowed labels and per-label source requirement.
+- `fact-output/v1` document: model-controlled claims (`key`, `label`, `text`, `source`),
+- `fact-output-policy/v1`: reviewed allowed labels and per-label source requirement,
+- `fact-evidence/v1`: runtime-controlled source registry (`id`, `evidence_sha256`).
 
 The adapter does **not** hard-code label names. Therefore a project can keep its label vocabulary in its
 existing canonical SSOT and materialize a small reviewed policy for the runtime.
+
+A claim source is not trusted merely because it is syntactically present. Every non-forbidden source must
+refer to an ID already present in the runtime evidence registry. The model does not get to mint trusted
+source IDs. The outer runtime creates the registry from tool/file/command evidence and can pin both policy
+and evidence registry with canonical SHA-256 digests in its receipt.
 
 ### Validation boundary
 
 Malformed or ambiguous input is a tool error (exit 2 / `RatchetError`) and fails closed. Examples:
 
 - unknown schema,
-- duplicate JSON object key,
-- duplicate claim key,
-- invalid policy shape,
+- duplicate JSON object/claim/source key,
+- invalid policy/evidence shape,
+- invalid evidence digest,
 - oversized or non-regular input.
 
 Well-formed semantic policy violations become normal Findings:
@@ -55,34 +63,38 @@ Well-formed semantic policy violations become normal Findings:
 - `fact-output.claim-required`,
 - `fact-output.unsupported-label`,
 - `fact-output.source-required`,
-- `fact-output.source-forbidden`.
+- `fact-output.source-forbidden`,
+- `fact-output.unknown-source`.
 
-The same input yields the same Finding identity.
+The same semantic violation yields the same Finding identity.
 
 ### Runtime contract
 
 A compliant runtime uses this sequence:
 
 ```text
-model/tool result
-  -> structured claim envelope
-  -> fact-output validator
-  -> exit 0: render only validated claims
-  -> exit 1: hold response, repair/retry/escalate
-  -> exit 2: hold response, repair runtime/input path
+trusted tools/files/commands -> evidence registry
+reviewed project SSOT         -> label policy
+model/tool synthesis          -> structured claim envelope
+                                  |
+                                  v
+                         fact-output validator
+                         /          |          \
+                    exit 0       exit 1       exit 2
+                    render        hold         hold
 ```
 
-Free-form text that bypasses the envelope is outside the trusted path. A runtime must not append unvalidated
-prose after validation and still claim enforcement.
+Only exit 0 may reach the renderer. Free-form text that bypasses the envelope is outside the trusted path.
+A runtime must not append unvalidated prose after validation and still claim enforcement.
 
 The adapter is read-only with respect to the target project. The optional CLI output is only an Observation
 artifact for audit/evaluation.
 
 ### Product/runtime boundary
 
-This package can provide the deterministic enforcement primitive but cannot install itself into every
-chat product. Each runtime must connect its pre-render/output boundary explicitly. A runtime without such a
-hook is `not_enforced`; prompt instructions alone must not be reported as mechanical enforcement.
+This package can provide the deterministic enforcement primitive but cannot install itself into every chat
+product. Each runtime must connect its pre-render/output boundary explicitly. A runtime without such a hook
+is `not_enforced`; prompt instructions alone must not be reported as mechanical enforcement.
 
 For API-based runtimes, provider structured-output/schema features may be used to generate the envelope,
 but this adapter is the provider-independent verification boundary.
@@ -95,8 +107,9 @@ than copying the prose into a new SSOT.
 
 The repository owns only:
 
-- the generic envelope schema,
+- the generic claim envelope schema,
 - the generic policy schema,
+- the generic trusted evidence registry schema,
 - deterministic validation behavior,
 - the CLI/read-only integration contract.
 
@@ -105,32 +118,35 @@ The repository owns only:
 Before rollout, assume these failure modes:
 
 1. **Bypass:** runtime validates JSON then appends free text. Mitigation: render envelope-only.
-2. **Policy drift:** runtime embeds stale label rules. Mitigation: pin/digest reviewed policy in the outer
-   runtime receipt.
-3. **Provider mismatch:** model cannot guarantee schema. Mitigation: validator remains authoritative; retry
+2. **Invented citation:** model emits a plausible fake source. Mitigation: source ID must exist in the
+   runtime-produced evidence registry.
+3. **Policy/evidence drift:** runtime embeds stale inputs. Mitigation: pin canonical policy/evidence digests
+   in the outer runtime receipt.
+4. **Provider mismatch:** model cannot guarantee schema. Mitigation: validator remains authoritative; retry
    or hold instead of rendering malformed output.
-4. **False “enforced” claim:** package is installed but output hook is not connected. Mitigation: runtime
-   smoke must intentionally submit an invalid envelope and observe a blocked render path.
-5. **SSOT duplication:** project vocabulary is copied into this package. Mitigation: code is vocabulary-free;
+5. **False “enforced” claim:** package is installed but output hook is not connected. Mitigation: runtime
+   smoke intentionally submits an invalid envelope and verifies it never reaches rendering.
+6. **SSOT duplication:** project vocabulary is copied into this package. Mitigation: code is vocabulary-free;
    project policy remains external and reviewed.
 
 ## Verification / done criteria
 
 Core implementation is complete when:
 
-- valid claims produce zero findings,
-- missing/forbidden sources and unsupported labels produce stable findings,
+- valid claims bound to registered evidence produce zero findings,
+- missing/forbidden/unregistered sources and unsupported labels produce stable findings,
 - malformed/duplicate inputs fail closed,
 - label vocabulary can change by policy without code change,
+- policy/evidence canonical digests are reproducible,
 - CLI returns 0/1/2 for allow/deny/tool-error,
 - CI passes on supported Python/OS matrix.
 
 Operational enforcement for a specific runtime is complete only after that runtime has a pre-render hook and
-a negative smoke proves an invalid claim is not shown to the user.
+a negative smoke proves an invalid or invented-source claim is not shown to the user.
 
 ## Non-goals
 
-- deciding whether a source is substantively true,
+- deciding whether the underlying evidence itself is substantively true,
 - inventing project-specific fact labels,
 - automatically rewriting user-visible prose,
 - installing hooks into third-party chat products,
