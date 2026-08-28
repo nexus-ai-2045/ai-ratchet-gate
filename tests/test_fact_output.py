@@ -223,6 +223,55 @@ def test_strings_over_common_observation_limit_fail_early() -> None:
         )
 
 
+def test_max_length_label_still_yields_semantic_finding() -> None:
+    """Admitted labels must not later raise invalid_message when forming findings."""
+    label = "L" * 4096
+    observation = observe_fact_output(
+        _document(_claim("c1", label, "ok", None)),
+        _policy(),
+        _evidence(),
+        subject="turn:example",
+    )
+
+    assert [finding.rule_id for finding in observation.findings] == [
+        "fact-output.unsupported-label"
+    ]
+    assert len(observation.findings[0].message.encode("utf-8")) <= 4096
+
+
+def test_max_length_required_label_missing_source_is_semantic() -> None:
+    label = "L" * 4096
+    policy = {
+        "schema": FACT_OUTPUT_POLICY_SCHEMA,
+        "labels": {label: {"source": "required"}},
+        "require_claims": True,
+    }
+    observation = observe_fact_output(
+        _document(_claim("c1", label, "ok", None)),
+        policy,
+        _evidence(),
+        subject="turn:example",
+    )
+
+    assert [finding.rule_id for finding in observation.findings] == [
+        "fact-output.source-required"
+    ]
+
+
+def test_max_length_unknown_source_is_semantic() -> None:
+    source = "S" * 4096
+    observation = observe_fact_output(
+        _document(_claim("c1", "fact", "ok", source)),
+        _policy(),
+        _evidence(),
+        subject="turn:example",
+    )
+
+    assert [finding.rule_id for finding in observation.findings] == [
+        "fact-output.unknown-source"
+    ]
+
+
 def test_canonical_digest_is_order_independent_for_object_keys() -> None:
     left = {"schema": FACT_EVIDENCE_SCHEMA, "sources": []}
     right = {"sources": [], "schema": FACT_EVIDENCE_SCHEMA}
@@ -283,6 +332,44 @@ def test_cli_allow_binds_exact_document_digest(
     assert emitted["status"] == "allow"
     assert emitted["document_sha256"] == canonical_sha256(document_value)
 
+
+def test_cli_large_semantic_deny_stays_exit_one(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Large well-formed denials must stay exit 1 (not observation_too_large / exit 2)."""
+    label = "L" * 1800
+    claims = [
+        _claim(f"c{index}", label, "x", None)
+        for index in range(1_000)
+    ]
+    document_value = _document(*claims)
+    document_bytes = len(
+        json.dumps(document_value, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    )
+    assert document_bytes <= 2 * 1024 * 1024
+
+    document = tmp_path / "document.json"
+    policy = tmp_path / "policy.json"
+    evidence = tmp_path / "evidence.json"
+    document.write_text(json.dumps(document_value), encoding="utf-8")
+    policy.write_text(json.dumps(_policy()), encoding="utf-8")
+    evidence.write_text(json.dumps(_evidence()), encoding="utf-8")
+
+    assert fact_output_main(
+        [
+            "--document", str(document),
+            "--policy", str(policy),
+            "--evidence", str(evidence),
+            "--subject", "turn:example",
+        ]
+    ) == 1
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["status"] == "deny"
+    assert "error" not in emitted
+    assert len(emitted["observation"]["findings"]) == 1_000
 
 def test_cli_returns_two_for_duplicate_json_key(
     tmp_path: Path,

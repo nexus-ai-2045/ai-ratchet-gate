@@ -95,7 +95,8 @@ The CLI itself is read-only and writes no Observation file. It emits a validatio
 canonical SHA-256 digests for the exact document, policy, and evidence registry used in validation. A
 cross-process renderer must verify `document_sha256` against the exact canonical document it will present;
 exit 0 alone must not authorize reopening an unbound mutable file. This closes the validate-then-replace
-TOCTOU path without adding a new filesystem mutation exception.
+TOCTOU path without adding a new filesystem mutation exception. Observation is not a receipt write path
+and must not be written via a separate `--out` mutation helper.
 
 ### Product/runtime boundary
 

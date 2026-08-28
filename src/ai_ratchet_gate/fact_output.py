@@ -224,7 +224,10 @@ def observe_fact_output(
                 _finding(
                     rule_id="fact-output.unsupported-label",
                     subject_key=f"claims/{claim.key}",
-                    message=f"claim label is not allowed by policy: {claim.label}",
+                    # Keep messages short and fixed so admitted claim/label/source
+                    # strings never overflow Finding.message (MAX_STRING_BYTES).
+                    # Full values remain in evidence.
+                    message="claim label is not allowed by policy",
                     evidence=claim.to_dict(),
                 )
             )
@@ -235,7 +238,7 @@ def observe_fact_output(
                 _finding(
                     rule_id="fact-output.source-required",
                     subject_key=f"claims/{claim.key}",
-                    message=f"source is required for label: {claim.label}",
+                    message="source is required for this claim label",
                     evidence=claim.to_dict(),
                 )
             )
@@ -247,7 +250,7 @@ def observe_fact_output(
                     _finding(
                         rule_id="fact-output.source-forbidden",
                         subject_key=f"claims/{claim.key}",
-                        message=f"source must be omitted for label: {claim.label}",
+                        message="source must be omitted for this claim label",
                         evidence=claim.to_dict(),
                     )
                 )
@@ -258,7 +261,7 @@ def observe_fact_output(
                 _finding(
                     rule_id="fact-output.unknown-source",
                     subject_key=f"claims/{claim.key}",
-                    message=f"source is not present in trusted evidence registry: {claim.source}",
+                    message="source is not present in trusted evidence registry",
                     evidence=claim.to_dict(),
                 )
             )
