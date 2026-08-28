@@ -2,7 +2,8 @@
 
 Usage:
     python -m ai_ratchet_gate.fact_output_cli \
-      --document response.json --policy policy.json --subject turn:123
+      --document response.json --policy policy.json --evidence evidence.json \
+      --subject turn:123
 
 Exit codes:
     0: valid (no findings)
@@ -20,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .fact_output import observe_fact_output
+from .fact_output import canonical_sha256, observe_fact_output
 from .model import RatchetError
 
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -114,10 +115,11 @@ def _emit_utf8(text: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="structured fact-output envelopeをpolicyでfail-closed検査する"
+        description="structured fact-output envelopeをpolicy/evidenceでfail-closed検査する"
     )
     parser.add_argument("--document", required=True, type=Path)
     parser.add_argument("--policy", required=True, type=Path)
+    parser.add_argument("--evidence", required=True, type=Path)
     parser.add_argument("--subject", required=True)
     parser.add_argument(
         "--out",
@@ -127,13 +129,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
-        if args.out is not None and (
-            _paths_alias(args.out, args.document) or _paths_alias(args.out, args.policy)
-        ):
+        inputs = (args.document, args.policy, args.evidence)
+        if args.out is not None and any(_paths_alias(args.out, path) for path in inputs):
             raise RatchetError("output_path_aliases_input")
+
+        document = _read_json(args.document)
+        policy = _read_json(args.policy)
+        evidence = _read_json(args.evidence)
         observation = observe_fact_output(
-            _read_json(args.document),
-            _read_json(args.policy),
+            document,
+            policy,
+            evidence,
             subject=args.subject,
         )
         text = json.dumps(
@@ -153,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
                         "status": "allow" if not observation.findings else "deny",
                         "finding_count": len(observation.findings),
                         "observation": str(args.out),
+                        "policy_sha256": canonical_sha256(policy),
+                        "evidence_sha256": canonical_sha256(evidence),
                     },
                     ensure_ascii=False,
                     sort_keys=True,
