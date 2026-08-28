@@ -20,11 +20,11 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 層 | 中身 | 汎用性 |
 |---|---|---|
 | core (`engine` / `model` / `receipt`) | 安定Finding IDの集合比較・mode判定・digest付きreceipt | 対象を問わない (gitを知らない) |
-| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` の 1 個だけ |
+| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` と `skills.provenance` |
 | baseline / waiver | レビュー済みの見逃しリスト | 形式は汎用、中身は対象ごと |
 
 つまり「git事故ツール」は入口の見た目で、実体は**任意の決定論的検査をratchet化する枠**です。
-第二adapter候補は [ROADMAP](ROADMAP.md) Phase 2 と
+第三adapter候補は [ROADMAP](ROADMAP.md) Phase 2 と
 [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11) (テスト無効化の増分検知) を参照。
 
 ## 今なにがratchetとして機能しているか
@@ -32,10 +32,11 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 対象 | 状態 |
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
-| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記 1 個) |
+| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記2個) |
+| `skills.provenance`（SKILL.md / scripts） | 提供中 (opt-in。`observe --adapter skills.provenance`) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
-| memory / skills / tool権限 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
+| memory / agent設定 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
 
@@ -63,6 +64,10 @@ tool権限、agent設定、evalなどへ適用できます。Hermes Agentなど�
 - 日本語を含むパスを安全に扱い、検査不能時はfail-closedで停止する
 - 期限付きwaiver（`evaluate --waiver`）でレビュー済み`waivers/v1`だけを消費する
   （追加・延長・scope変更の自動承認はしない）
+- `skills.provenance`でAgent Skillsの`SKILL.md`とsibling `scripts/`をread-only観測し、
+  新規skill・`allowed-tools`拡大・無制限tools・scripts payload digest変更を独立軸でdenyする
+  （`SKILL.md`本文のみの編集ではdenyしない。契約は
+  [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）
 - solution-knowledgeの`load_knowledge_document` / `compose_knowledge` / `resolve_problem`で、
   検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
   対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /
@@ -114,6 +119,14 @@ ai-ratchet-gate observe \
   --repo . \
   --subject repo:owner/name@COMMIT_SHA \
   --out observation.json
+
+# 任意: Agent Skills の SKILL.md / scripts を第二adapterで観測
+# （`.agents/skills/` と `skills/` を存在する分だけ走査）
+ai-ratchet-gate observe \
+  --repo . \
+  --adapter skills.provenance \
+  --subject repo:owner/name@COMMIT_SHA \
+  --out skill-observation.json
 
 ai-ratchet-gate evaluate \
   --observation observation.json \
@@ -182,10 +195,11 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## 限界 (正直に)
 
-- 組み込み観測は現在「tracked ∧ ignored」という**1つの不変条件だけ**。汎用coreが別領域を
-  自動理解するわけではなく、対象ごとに決定論的adapterと人間確認済みfixtureが必要
-- baseline はパス集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
-  同一パスが baseline に出入りを繰り返す「往復発散」は検出しない
+- 組み込み観測は現在「tracked ∧ ignored」と「skill provenance（SKILL.md / scripts）」の
+  **2つの不変条件**。汎用coreが別領域を自動理解するわけではなく、対象ごとに決定論的
+  adapterと人間確認済みfixtureが必要
+- baseline はパス／finding ID集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
+  同一キーが baseline に出入りを繰り返す「往復発散」は検出しない
 - hook を素通りする経路 (`--no-verify`、hook 未導入環境からの commit) は止められない。
   関所の網羅は運用側の責務
 

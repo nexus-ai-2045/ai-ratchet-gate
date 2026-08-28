@@ -1,6 +1,12 @@
 """人間確認済みfailureを実行可能な非回帰guardへ変える汎用gate。"""
 
-from .adapters import ScanContext, TrackedIgnoredAdapter
+from .adapters import (
+    DEFAULT_SKILL_ROOTS,
+    SKILLS_PROVENANCE_ADAPTER_ID,
+    ScanContext,
+    SkillProvenanceAdapter,
+    TrackedIgnoredAdapter,
+)
 from .engine import evaluate
 from .model import Decision, Finding, Observation, RatchetError
 from .receipt import build_receipt
@@ -26,7 +32,9 @@ from .cli import (
 __all__ = [
     "BASELINE_HEADER",
     "DEFAULT_BASELINE",
+    "DEFAULT_SKILL_ROOTS",
     "SKIP_ENV",
+    "SKILLS_PROVENANCE_ADAPTER_ID",
     "diff_against_baseline",
     "format_baseline",
     "list_tracked_ignored",
@@ -37,6 +45,7 @@ __all__ = [
     "Observation",
     "RatchetError",
     "ScanContext",
+    "SkillProvenanceAdapter",
     "TrackedIgnoredAdapter",
     "WaiverDocument",
     "WaiverRecord",

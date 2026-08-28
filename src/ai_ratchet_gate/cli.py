@@ -32,7 +32,11 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .adapters import ScanContext, TrackedIgnoredAdapter
+from .adapters import (
+    ScanContext,
+    SkillProvenanceAdapter,
+    TrackedIgnoredAdapter,
+)
 from .engine import evaluate
 from .model import Finding, Observation, RatchetError
 from .receipt import build_receipt
@@ -277,6 +281,12 @@ def _observe_main(argv: list[str]) -> int:
     )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument(
+        "--adapter",
+        choices=["git.tracked_ignored", "skills.provenance"],
+        default="git.tracked_ignored",
+        help="組み込みadapter。既定は git.tracked_ignored（legacy互換）",
+    )
+    parser.add_argument(
         "--subject",
         required=True,
         help="enforcement 側が固定する候補 identity (例: repo:owner/name@COMMIT_SHA)",
@@ -298,9 +308,11 @@ def _observe_main(argv: list[str]) -> int:
                 raise RatchetError("observation_out_unresolvable") from error
             if out_inside_repo:
                 raise RatchetError("observation_out_inside_repo")
-        observation = TrackedIgnoredAdapter().observe(
-            ScanContext(args.repo, args.subject)
-        )
+        if args.adapter == "skills.provenance":
+            adapter = SkillProvenanceAdapter()
+        else:
+            adapter = TrackedIgnoredAdapter()
+        observation = adapter.observe(ScanContext(args.repo, args.subject))
         text = json.dumps(
             observation.to_dict(), ensure_ascii=False, sort_keys=True,
             separators=(",", ":"),
