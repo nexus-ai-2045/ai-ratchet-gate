@@ -29,12 +29,14 @@ import stat
 import sys
 import tempfile
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .adapters import ScanContext, TrackedIgnoredAdapter
 from .engine import evaluate
 from .model import Finding, Observation, RatchetError
 from .receipt import build_receipt
+from .waiver import WaiverDocument, select_waived_finding_ids
 
 SKIP_ENV = "AI_RATCHET_GATE_SKIP"
 DEFAULT_BASELINE = ".ai-ratchet-gate/baseline.txt"
@@ -182,6 +184,11 @@ def _evaluate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="汎用findingをbaselineと比較する")
     parser.add_argument("--observation", required=True, type=Path)
     parser.add_argument("--baseline", required=True, type=Path)
+    parser.add_argument(
+        "--waiver",
+        type=Path,
+        help="レビュー済みwaiver JSON（opt-in）。coreは追加・延長・scope変更を承認しない",
+    )
     parser.add_argument("--receipt", type=Path)
     parser.add_argument(
         "--expected-subject",
@@ -228,16 +235,31 @@ def _evaluate_main(argv: list[str]) -> int:
             or not isinstance(raw_baseline["finding_ids"], list)
         ):
             raise RatchetError("baseline_identity_mismatch")
+        waived_finding_ids: tuple[str, ...] = ()
+        if args.waiver is not None:
+            raw_waiver = _read_json(args.waiver)
+            waiver_document = WaiverDocument.from_dict(raw_waiver)
+            waived_finding_ids = select_waived_finding_ids(
+                waiver_document,
+                observation,
+                now=datetime.now(timezone.utc),
+            )
         decision = evaluate(
             observation,
             raw_baseline["finding_ids"],
             mode=args.mode or "ratchet",
             policy=raw_baseline["policy"],
+            waived_finding_ids=waived_finding_ids,
         )
         receipt = build_receipt(decision)
         if args.receipt:
-            if _paths_alias(args.receipt, args.observation) or _paths_alias(
-                args.receipt, args.baseline
+            if (
+                _paths_alias(args.receipt, args.observation)
+                or _paths_alias(args.receipt, args.baseline)
+                or (
+                    args.waiver is not None
+                    and _paths_alias(args.receipt, args.waiver)
+                )
             ):
                 raise RatchetError("receipt_path_aliases_input")
             _atomic_write_text(args.receipt, receipt)

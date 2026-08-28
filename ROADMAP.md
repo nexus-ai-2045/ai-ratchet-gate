@@ -30,11 +30,12 @@ Memory管理、skill生成、エージェント実行、品質全般の評価は
 - legacy CLIと`baseline.txt`をcharacterization testで固定し、新契約をopt-in導入する
 - baselineと期限付きwaiverを分離する
 - 複数adapterを総合点へ潰さず、軸ごとにallow / deny / indeterminateを返す
+- 期限付きwaiver（`ai-ratchet-gate.waivers/v1`）の検証と、脅威モデル上の安価なゲームに対する回帰テスト
 
 完了条件は、既存CLIとの互換性を保ち、同じ入力から同じ判定を再現できることです。
 
-実装順は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)に従い、まずschemaと純関数、次に
-既存Git検査のadapter化、receipt、waiver検証を進めます。
+実装順は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)に従う。schema・純関数、Git検査の
+adapter化、receipt、waiver検証（Next Action 1–4）は実装済み。次は第二adapterの個別設計。
 
 ## Phase 2: AI運用向け参照アダプター
 

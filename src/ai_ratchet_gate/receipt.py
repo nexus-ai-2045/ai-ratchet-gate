@@ -56,6 +56,7 @@ def build_receipt(decision: Decision) -> str:
             "accepted": list(decision.accepted),
             "new": list(decision.new),
             "resolved": list(decision.resolved),
+            "waived": list(decision.waived),
         },
     }
     body["receipt_sha256"] = hashlib.sha256(_canonical(body).encode()).hexdigest()
