@@ -11,6 +11,13 @@ baselineの初回差分を人間が確認してから、commit前の検査また
 `ai-ratchet-gate.baseline/v1`としてレビューしてから`evaluate`へ接続します。
 両方のrootが無い場合はfinding 0件です。存在するrootを列挙できない場合はfail-closed（exit 2）です。
 
+第三adapter `test.disable`を使う場合は、
+`observe --adapter test.disable`でPython / JS/TSテストファイルをread-only観測し、
+finding ID集合をbaselineとしてレビューしてから`evaluate`へ接続します。
+`focused_only`（`.only` / `fit` / `fdescribe`）は既存`strict` modeで常時denyする運用を推奨します。
+例外は既存の`ai-ratchet-gate.waivers/v1`だけを消費し、自由記述のskip reasonは許可条件にしません。
+symlink・非UTF-8・曖昧構文はfail-closed（exit 2）です。
+
 ## 日常運用
 
 - 通常検査はread-onlyで実行する
@@ -18,6 +25,8 @@ baselineの初回差分を人間が確認してから、commit前の検査また
 - skill側で新規SKILL.md、`allowed-tools`拡大、無制限tools、`scripts/`の追加・内容変更が出たら、
   意図しない拡大かレビューする。`SKILL.md`本文のみの変更はfinding IDが変わらない
   （scripts payload digestはdeny軸）
+- test側で無条件skip・`.only`・空洞assertの新規が出たら、意図しない偽完了かレビューする。
+  `skipif`と`test.todo`は観測対象外。例外はwaiver差分として残す
 - 意図的な例外だけbaseline更新または期限付きwaiverとし、その差分をレビューする
 - skipは緊急回避に限定し、実行理由と出力をレビュー記録へ残す
 - baseline拡大、waiver追加・延長・scope変更、adapterのenforce昇格は自動承認しない
@@ -27,6 +36,7 @@ baselineの初回差分を人間が確認してから、commit前の検査また
 - CLI、baseline形式、hook、CI、対応Pythonを変更したときは全テストを再実行する
 - gitの列挙結果とbaseline件数が想定外に変化した場合は導入先を調査する
 - `skills.provenance`のfinding件数やrule_id分布が想定外に変化した場合も導入先を調査する
+- `test.disable`のfinding件数やrule_id分布が想定外に変化した場合も導入先を調査する
 - release前にはUbuntu・Windows、対応するPython版で検証する
 
 ## ロールバック
@@ -36,3 +46,4 @@ baselineと導入commitは、原因調査と再導入に使えるため即時削
 取り消し、導入先のテストと`git status`を再確認します。
 `skills.provenance`だけ外す場合は、`--adapter skills.provenance`の呼び出しを止めればよく、
 legacyの`git.tracked_ignored`検査はそのまま残せます。
+`test.disable`だけ外す場合も同様に、`--adapter test.disable`の呼び出しを止めれば足ります。

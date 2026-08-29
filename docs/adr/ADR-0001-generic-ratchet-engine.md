@@ -96,3 +96,7 @@ scan、receipt、baseline縮小候補、修復候補の生成までは自動化�
    （実装済み: ADR-0004、`skills.provenance`、`observe --adapter skills.provenance`、
    `new_skill` / `allowed_tools_token` / `unrestricted_tools` / `executable_asset`、
    scripts digestはdeny軸・SKILL.md本文はevidence、回帰テスト）
+6. ~~第三adapterはテスト無効化（skip / only / hollow）を個別設計する。~~
+   （実装済み: ADR-0005、`test.disable`、`observe --adapter test.disable`、
+   `unconditional_skip` / `focused_only` / `hollow_test`。C2は既存`strict`。
+   C4・逆さまテストはスコープ外）

@@ -35,6 +35,7 @@ from pathlib import Path
 from .adapters import (
     ScanContext,
     SkillProvenanceAdapter,
+    TestDisableAdapter,
     TrackedIgnoredAdapter,
 )
 from .engine import evaluate
@@ -282,7 +283,7 @@ def _observe_main(argv: list[str]) -> int:
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument(
         "--adapter",
-        choices=["git.tracked_ignored", "skills.provenance"],
+        choices=["git.tracked_ignored", "skills.provenance", "test.disable"],
         default="git.tracked_ignored",
         help="組み込みadapter。既定は git.tracked_ignored（legacy互換）",
     )
@@ -310,6 +311,8 @@ def _observe_main(argv: list[str]) -> int:
                 raise RatchetError("observation_out_inside_repo")
         if args.adapter == "skills.provenance":
             adapter = SkillProvenanceAdapter()
+        elif args.adapter == "test.disable":
+            adapter = TestDisableAdapter()
         else:
             adapter = TrackedIgnoredAdapter()
         observation = adapter.observe(ScanContext(args.repo, args.subject))

@@ -3,8 +3,10 @@
 from .adapters import (
     DEFAULT_SKILL_ROOTS,
     SKILLS_PROVENANCE_ADAPTER_ID,
+    TEST_DISABLE_ADAPTER_ID,
     ScanContext,
     SkillProvenanceAdapter,
+    TestDisableAdapter,
     TrackedIgnoredAdapter,
 )
 from .engine import evaluate
@@ -35,6 +37,7 @@ __all__ = [
     "DEFAULT_SKILL_ROOTS",
     "SKIP_ENV",
     "SKILLS_PROVENANCE_ADAPTER_ID",
+    "TEST_DISABLE_ADAPTER_ID",
     "diff_against_baseline",
     "format_baseline",
     "list_tracked_ignored",
@@ -46,6 +49,7 @@ __all__ = [
     "RatchetError",
     "ScanContext",
     "SkillProvenanceAdapter",
+    "TestDisableAdapter",
     "TrackedIgnoredAdapter",
     "WaiverDocument",
     "WaiverRecord",

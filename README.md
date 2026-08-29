@@ -20,20 +20,20 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 層 | 中身 | 汎用性 |
 |---|---|---|
 | core (`engine` / `model` / `receipt`) | 安定Finding IDの集合比較・mode判定・digest付きreceipt | 対象を問わない (gitを知らない) |
-| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` と `skills.provenance` |
+| adapter | 対象を観測しFinding IDへ正規化する | 対象ごとに個別。現在は `git.tracked_ignored` / `skills.provenance` / `test.disable` |
 | baseline / waiver | レビュー済みの見逃しリスト | 形式は汎用、中身は対象ごと |
 
 つまり「git事故ツール」は入口の見た目で、実体は**任意の決定論的検査をratchet化する枠**です。
-第三adapter候補は [ROADMAP](ROADMAP.md) Phase 2 と
-[Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11) (テスト無効化の増分検知) を参照。
+追加adapter候補は [ROADMAP](ROADMAP.md) Phase 2 を参照。
 
 ## 今なにがratchetとして機能しているか
 
 | 対象 | 状態 |
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
-| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記2個) |
+| 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記3個) |
 | `skills.provenance`（SKILL.md / scripts） | 提供中 (opt-in。`observe --adapter skills.provenance`) |
+| `test.disable`（skip / only / hollow） | 提供中 (opt-in。`observe --adapter test.disable`。Issue #11) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
 | memory / agent設定 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
@@ -44,8 +44,9 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 返した安定Finding IDをレビュー済みbaselineと比較し、`accepted / new / resolved`を機械判定して
 入力digest付きreceiptを返します。Gitの`tracked ∧ ignored`検査は既存CLI互換を維持しています。
 
-同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、将来memory、skills、
-tool権限、agent設定、evalなどへ適用できます。Hermes Agentなどが
+同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約は、既に
+`git.tracked_ignored`・`skills.provenance`・`test.disable`へ適用済みです。
+将来の候補は memory・agent設定・eval など（ROADMAP Phase 2）です。Hermes Agentなどが
 知識や手順を学習・再利用する層だとすれば、本ツールはその変化が安全基準を後退させていないかを
 外側から決定論的に検査する補完層です。
 
@@ -68,6 +69,12 @@ tool権限、agent設定、evalなどへ適用できます。Hermes Agentなど�
   新規skill・`allowed-tools`拡大・無制限tools・scripts payload digest変更を独立軸でdenyする
   （`SKILL.md`本文のみの編集ではdenyしない。契約は
   [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）
+- `test.disable`でPython / JS/TSテストの無条件skip・`.only`・空洞assertをread-only観測し、
+  `unconditional_skip` / `focused_only` / `hollow_test`を独立軸で出す
+  （`skipif`と`test.todo`は対象外。自由記述reasonは許可条件にせず既存waiver。
+  C2は既存`strict`。C4・逆さまテストはスコープ外。契約は
+  [ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
+  [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）
 - solution-knowledgeの`load_knowledge_document` / `compose_knowledge` / `resolve_problem`で、
   検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
   対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /
@@ -127,6 +134,13 @@ ai-ratchet-gate observe \
   --adapter skills.provenance \
   --subject repo:owner/name@COMMIT_SHA \
   --out skill-observation.json
+
+# 任意: テスト無効化（skip / only / hollow）を第三adapterで観測
+ai-ratchet-gate observe \
+  --repo . \
+  --adapter test.disable \
+  --subject repo:owner/name@COMMIT_SHA \
+  --out test-observation.json
 
 ai-ratchet-gate evaluate \
   --observation observation.json \
@@ -195,9 +209,11 @@ deny 時のエラー文には修復手順が同梱されます:
 
 ## 限界 (正直に)
 
-- 組み込み観測は現在「tracked ∧ ignored」と「skill provenance（SKILL.md / scripts）」の
-  **2つの不変条件**。汎用coreが別領域を自動理解するわけではなく、対象ごとに決定論的
-  adapterと人間確認済みfixtureが必要
+- 組み込み観測は現在「tracked ∧ ignored」「skill provenance（SKILL.md / scripts）」
+  「テスト無効化（skip / only / hollow）」の **3つの不変条件**。汎用coreが別領域を
+  自動理解するわけではなく、対象ごとに決定論的adapterと人間確認済みfixtureが必要
+- `test.disable`が通っても「テストが正しい」を意味しない。仕様をバグに固定する
+  逆さまテストや、削除・renameによる分母操作（C4）はスコープ外（README / ADR-0005）
 - baseline はパス／finding ID集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
   同一キーが baseline に出入りを繰り返す「往復発散」は検出しない
 - hook を素通りする経路 (`--no-verify`、hook 未導入環境からの commit) は止められない。
@@ -212,8 +228,9 @@ deny 時のエラー文には修復手順が同梱されます:
 - [imbue-ai/ratchets](https://github.com/imbue-ai/ratchets) (lint 予算型、agent-friendly を明示)
 - [iangrunert/git-ratchet](https://github.com/iangrunert/git-ratchet) (汎用計測値の ratchet)
 
-これらは lint 違反数や計測値を対象にしています。本ゲートは **git の状態矛盾そのもの**を
-不変条件として扱う点が異なります。
+これらは lint 違反数や計測値を対象にしています。本ゲートの最初の不変条件は
+**git の状態矛盾（tracked ∧ ignored）**であり、さらに opt-in で skill provenance と
+テスト無効化（skip / only / hollow）も同じ ratchet 契約で扱います。
 
 ## テスト
 
