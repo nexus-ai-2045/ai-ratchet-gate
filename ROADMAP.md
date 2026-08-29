@@ -20,8 +20,11 @@ AI Ratchet Gateは、AIエージェントが変更するリポジトリ、memory
 実装済みは、Gitの`tracked ∧ ignored`矛盾を対象にした最初のアダプター、
 Agent Skillsの`SKILL.md` / `scripts/`を対象にした第二アダプター`skills.provenance`、
 およびテスト無効化（skip / only / hollow）を対象にした第三アダプター`test.disable`です。
+加えて `agent.fact_output`（[ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md)）の
+決定論的 read-only CLI も main にあるが、これは第四 built-in observe adapter ではなく、
+各 runtime は pre-render hook と negative smoke が揃うまで `not_enforced` である。
 Memory管理、skill生成、エージェント実行、品質全般の評価はまだ提供していません。
-v1.0には3種類以上の独立アダプターが必要であり、built-inは3種そろった。
+v1.0には3種類以上の独立アダプターが必要であり、built-in observe adapterは3種そろった。
 脅威モデル回帰表・observe→evaluate運用接続・人間停止線の運用正本（OPERATIONS）も揃えたが、
 branch protection必須化やv1.0宣言そのものは人間所有のため、本時点ではv1.0完了を主張しません。
 

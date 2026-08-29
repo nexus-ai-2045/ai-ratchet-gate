@@ -10,3 +10,4 @@
 | [ADR-0003](ADR-0003-solution-knowledge-propagation.md) | proposed | 解決知識の中央/ローカル伝播 |
 | [ADR-0004](ADR-0004-skill-provenance-adapter.md) | accepted | skills provenance / permission expansion adapter |
 | [ADR-0005](ADR-0005-test-disable-adapter.md) | accepted | テスト無効化（skip / only / hollow）adapter |
+| [ADR-0006](ADR-0006-fact-output-enforcement.md) | proposed | structured fact-output enforcement（read-only CLI。runtime は not_enforced） |
