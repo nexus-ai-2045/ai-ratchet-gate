@@ -19,6 +19,8 @@
 - `ai_ratchet_gate.py`: ソースcheckoutからの従来利用を維持する互換ラッパー
 - `.ai-ratchet-gate/baseline.txt`: 導入時点で許容した既存矛盾のパス集合
 - `scripts/verify.py`: 選択したPythonでテストとCLI smoke testを実行する検証入口
+- `scripts/enforce_observe_evaluate.py`: local/CI向けのobserve→evaluate運用接続（既存CLI消費）
+- `.ai-ratchet-gate/baselines/*.v1.json`: レビュー済みfinding_ids seed（subjectはenforcementが束縛）
 - `tests/`: 列挙、baseline差分、互換ラッパー、CLI動作の回帰テスト
 
 汎用engineでは、上記の既存入口を維持しながら内部を次へ分離する。
@@ -77,11 +79,17 @@ scan、decision、receipt、修復案、baseline縮小候補までは自動化�
 enforce昇格、merge、release、公開、外部送信は人間レビューで停止する。receiptの成功はこれらの
 承認を意味しない。
 
+運用向けの手順・PDCA境界・hook迂回範囲・強制境界の正本は[OPERATIONS.md](../OPERATIONS.md)。
+本repositoryのCIは`scripts/enforce_observe_evaluate.py`経由で既存の`observe`→`evaluate`を
+消費する（公開CLIを増やさない）。branch protectionでそのジョブを必須化するかは導入先の
+人間所有である。
+
 ## 信頼境界
 
 - 対象リポジトリのgit metadataとignoreルールは検査入力であり、信頼済みとはみなさない。
 - 通常検査はread-onlyで、baseline更新だけがファイル書き込みを行う。
-- commit hookやCIへの接続は利用側の責務であり、このパッケージ単体では強制できない。
+- commit hookやCIへの接続レシピは本パッケージが提供するが、hook迂回の強制阻止はこの
+  パッケージ単体ではできない（OPERATIONSの「hookを迂回できる範囲」を正本とする）。
 - MVPはbuilt-in adapterだけを実行する。第三者pluginのsandboxを提供したとはみなさない。
 - receiptはbaselineとobservationのdigestを持つ。CLIはenforcement側が指定した
   `--expected-subject`との一致を必須にし、別候補への単純な再利用を拒否する。

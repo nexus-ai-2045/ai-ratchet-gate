@@ -63,6 +63,72 @@ def test_duplicate_finding_id_is_rejected() -> None:
         Observation.create("example.guard", "1", "repo:abc", [duplicate, duplicate])
 
 
+def test_too_many_findings_fail_closed(monkeypatch) -> None:
+    """finding件数爆発は成功観測として出さない（脅威モデル: 巨大出力）。"""
+    from ai_ratchet_gate import model as model_module
+
+    monkeypatch.setattr(model_module, "MAX_FINDINGS", 2)
+    items = [finding(f"item-{index}") for index in range(3)]
+    with pytest.raises(RatchetError, match="too_many_findings"):
+        Observation.create("example.guard", "1", "repo:abc", items)
+
+
+def test_threat_rule_axis_improvement_does_not_offset_new_worsening() -> None:
+    """一軸の改善（resolved）で別ruleの新規悪化を相殺しない。"""
+    kept = Finding.create(
+        adapter_id="example.guard",
+        adapter_version="1",
+        rule_id="axis-a",
+        subject_kind="artifact",
+        subject_key="same.txt",
+        message="old-a",
+        evidence_sha256="a" * 64,
+    )
+    improved_away = Finding.create(
+        adapter_id="example.guard",
+        adapter_version="1",
+        rule_id="axis-b",
+        subject_kind="artifact",
+        subject_key="same.txt",
+        message="old-b",
+        evidence_sha256="b" * 64,
+    )
+    newly_worse = Finding.create(
+        adapter_id="example.guard",
+        adapter_version="1",
+        rule_id="axis-c",
+        subject_kind="artifact",
+        subject_key="same.txt",
+        message="new-c",
+        evidence_sha256="c" * 64,
+    )
+    decision = evaluate(
+        Observation.create(
+            "example.guard", "1", "repo:abc", [kept, newly_worse]
+        ),
+        baseline_ids=[kept.finding_id, improved_away.finding_id],
+        mode="ratchet",
+        policy="new_only",
+    )
+    assert decision.status == "deny"
+    assert decision.new == (newly_worse.finding_id,)
+    assert decision.resolved == (improved_away.finding_id,)
+    assert decision.accepted == (kept.finding_id,)
+
+
+def test_threat_observe_mode_collects_misdetection_without_deny() -> None:
+    """誤検知観測（mode=observe）は新規findingでもallow。enforcementでは使わない。"""
+    item = finding("fp-candidate")
+    decision = evaluate(
+        Observation.create("example.guard", "1", "repo:abc", [item]),
+        baseline_ids=[],
+        mode="observe",
+        policy="new_only",
+    )
+    assert decision.status == "allow"
+    assert decision.new == (item.finding_id,)
+
+
 def test_receipt_is_canonical_and_order_independent() -> None:
     first, second = finding("a"), finding("b")
     baseline = ["f" * 64]

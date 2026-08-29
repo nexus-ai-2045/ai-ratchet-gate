@@ -25,8 +25,12 @@
       "requires_any": ["tests/**"]
     },
     {
-      "change": [".github/**", ".repo-preflight-consistency.json"],
-      "requires_any": ["tests/**", "README.md", "PREFLIGHT.md"]
+      "change": [".github/**", ".repo-preflight-consistency.json", ".pre-commit-hooks.yaml"],
+      "requires_any": ["tests/**", "README.md", "PREFLIGHT.md", "OPERATIONS.md"]
+    },
+    {
+      "change": ["scripts/enforce_observe_evaluate.py", ".ai-ratchet-gate/baselines/**"],
+      "requires_any": ["tests/**", "OPERATIONS.md"]
     }
   ],
   "generated_artifacts": []
