@@ -6,13 +6,21 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from ai_ratchet_gate.adapters import ScanContext, TestDisableAdapter
+from ai_ratchet_gate.waiver import (
+    observation_digest,
+    review_binding_sha256,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 ENFORCE = ROOT / "scripts" / "enforce_observe_evaluate.py"
 GIT_BASELINE = ROOT / ".ai-ratchet-gate" / "baselines" / "git.tracked_ignored.v1.json"
+NOW = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _git_env() -> dict[str, str]:
@@ -46,16 +54,12 @@ def _init_repo(path: Path) -> None:
     )
 
 
-def test_enforce_allows_clean_repo_with_empty_baseline(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_repo(repo)
-    seed = tmp_path / "baseline.json"
-    seed.write_text(
+def _empty_seed(path: Path, adapter_id: str) -> None:
+    path.write_text(
         json.dumps(
             {
                 "schema": "ai-ratchet-gate.baseline/v1",
-                "adapter_id": "git.tracked_ignored",
+                "adapter_id": adapter_id,
                 "adapter_version": "1",
                 "subject": "placeholder",
                 "policy": "new_only",
@@ -64,6 +68,14 @@ def test_enforce_allows_clean_repo_with_empty_baseline(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def test_enforce_allows_clean_repo_with_empty_baseline(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    seed = tmp_path / "baseline.json"
+    _empty_seed(seed, "git.tracked_ignored")
     receipt = tmp_path / "out" / "receipt.json"
     code = subprocess.run(
         [
@@ -109,19 +121,7 @@ def test_enforce_denies_new_tracked_ignored(tmp_path: Path) -> None:
         check=True,
     )
     seed = tmp_path / "baseline.json"
-    seed.write_text(
-        json.dumps(
-            {
-                "schema": "ai-ratchet-gate.baseline/v1",
-                "adapter_id": "git.tracked_ignored",
-                "adapter_version": "1",
-                "subject": "placeholder",
-                "policy": "new_only",
-                "finding_ids": [],
-            }
-        ),
-        encoding="utf-8",
-    )
+    _empty_seed(seed, "git.tracked_ignored")
     code = subprocess.run(
         [
             sys.executable,
@@ -156,24 +156,11 @@ def test_enforce_rejects_observe_mode(tmp_path: Path) -> None:
         text=True,
     )
     assert result.returncode == 2
-    assert "observe" in result.stderr.lower() or "invalid" in result.stderr.lower() or result.returncode == 2
 
 
 def test_enforce_adapter_baseline_mismatch_fails_closed(tmp_path: Path) -> None:
     seed = tmp_path / "baseline.json"
-    seed.write_text(
-        json.dumps(
-            {
-                "schema": "ai-ratchet-gate.baseline/v1",
-                "adapter_id": "skills.provenance",
-                "adapter_version": "1",
-                "subject": "placeholder",
-                "policy": "new_only",
-                "finding_ids": [],
-            }
-        ),
-        encoding="utf-8",
-    )
+    _empty_seed(seed, "skills.provenance")
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo)
@@ -198,8 +185,179 @@ def test_enforce_adapter_baseline_mismatch_fails_closed(tmp_path: Path) -> None:
     assert "adapter_id" in result.stderr
 
 
+def test_enforce_rejects_duplicate_baseline_seed_keys(tmp_path: Path) -> None:
+    """空 finding_ids のあとに別 finding_ids を足す曖昧 seed は fail-closed (exit 2)。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    seed = tmp_path / "dup-seed.json"
+    # json.dumps では重複キーを表現できないため、手書き JSON を使う
+    finding_id = "a" * 64
+    seed.write_text(
+        "{\n"
+        '  "schema": "ai-ratchet-gate.baseline/v1",\n'
+        '  "adapter_id": "git.tracked_ignored",\n'
+        '  "adapter_version": "1",\n'
+        '  "subject": "placeholder",\n'
+        '  "policy": "new_only",\n'
+        '  "finding_ids": [],\n'
+        f'  "finding_ids": ["{finding_id}"]\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ENFORCE),
+            "--repo",
+            str(repo),
+            "--baseline",
+            str(seed),
+            "--subject",
+            "repo:example@dup",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "duplicate_json_object_key" in result.stderr
+
+
+def test_enforce_receipt_parent_oserror_is_tool_error(tmp_path: Path) -> None:
+    """receipt 親directory作成失敗は deny(1) ではなく tool_error(2)。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    seed = tmp_path / "baseline.json"
+    _empty_seed(seed, "git.tracked_ignored")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    receipt = blocker / "nested" / "receipt.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ENFORCE),
+            "--repo",
+            str(repo),
+            "--baseline",
+            str(seed),
+            "--subject",
+            "repo:example@receipt",
+            "--receipt",
+            str(receipt),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "receipt" in result.stderr.lower() or "directory" in result.stderr.lower()
+
+
+def test_enforce_forwards_reviewed_waiver(tmp_path: Path) -> None:
+    """レビュー済み waiver を evaluate へフォワードし、承認はしない。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    tests_dir = repo / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_flaky.py").write_text(
+        "import pytest\n"
+        "\n"
+        "@pytest.mark.skip\n"
+        "def test_flaky():\n"
+        "    assert 1 == 1\n",
+        encoding="utf-8",
+    )
+    subject = "repo:example@waiver"
+    observation = TestDisableAdapter().observe(ScanContext(repo, subject))
+    finding = next(
+        item for item in observation.findings if item.rule_id == "unconditional_skip"
+    )
+    digest = observation_digest(observation)
+    expires_at = "2099-01-01T00:00:00Z"
+    waiver_path = tmp_path / "waiver.json"
+    waiver_path.write_text(
+        json.dumps(
+            {
+                "schema": "ai-ratchet-gate.waivers/v1",
+                "adapter_id": "test.disable",
+                "adapter_version": "1",
+                "subject": subject,
+                "waivers": [
+                    {
+                        "waiver_id": "w-enforce-1",
+                        "finding_id": finding.finding_id,
+                        "expires_at": expires_at,
+                        "observation_sha256": digest,
+                        "review_binding_sha256": review_binding_sha256(
+                            adapter_id="test.disable",
+                            adapter_version="1",
+                            subject=subject,
+                            waiver_id="w-enforce-1",
+                            finding_id=finding.finding_id,
+                            expires_at=expires_at,
+                            observation_sha256=digest,
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    seed = tmp_path / "baseline.json"
+    _empty_seed(seed, "test.disable")
+    receipt = tmp_path / "receipt.json"
+
+    denied = subprocess.run(
+        [
+            sys.executable,
+            str(ENFORCE),
+            "--repo",
+            str(repo),
+            "--adapter",
+            "test.disable",
+            "--baseline",
+            str(seed),
+            "--subject",
+            subject,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).returncode
+    assert denied == 1
+
+    allowed = subprocess.run(
+        [
+            sys.executable,
+            str(ENFORCE),
+            "--repo",
+            str(repo),
+            "--adapter",
+            "test.disable",
+            "--baseline",
+            str(seed),
+            "--subject",
+            subject,
+            "--waiver",
+            str(waiver_path),
+            "--receipt",
+            str(receipt),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).returncode
+    assert allowed == 0
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["decision"]["status"] == "allow"
+    assert finding.finding_id in payload["decision"]["waived"]
+
+
 def test_repo_baseline_seeds_match_built_in_adapters() -> None:
-    """本repoの seed は3 adapter 分あり、キー集合と schema が契約どおり。"""
+    """本repoの seed ファイル（読取のみ）は3 adapter 分あり契約どおり。走査はしない。"""
     base = ROOT / ".ai-ratchet-gate" / "baselines"
     expected = {
         "git.tracked_ignored": "git.tracked_ignored.v1.json",
@@ -223,30 +381,31 @@ def test_repo_baseline_seeds_match_built_in_adapters() -> None:
 
 
 @pytest.mark.parametrize(
-    "adapter,seed_name",
-    [
-        ("git.tracked_ignored", "git.tracked_ignored.v1.json"),
-        ("skills.provenance", "skills.provenance.v1.json"),
-        ("test.disable", "test.disable.v1.json"),
-    ],
+    "adapter",
+    ["git.tracked_ignored", "skills.provenance", "test.disable"],
 )
-def test_enforce_self_repo_seeds_allow_on_current_tree(
-    adapter: str, seed_name: str, tmp_path: Path
+def test_enforce_empty_seed_allows_on_temp_fixture(
+    adapter: str, tmp_path: Path
 ) -> None:
-    """本repoの現状（finding 0）では3 adapterとも empty seed で allow。"""
+    """unit は一時 repo fixture のみ。実 checkout 走査は CI/local enforce コマンド側。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    seed = tmp_path / "baseline.json"
+    _empty_seed(seed, adapter)
     receipt = tmp_path / f"{adapter}.receipt.json"
     code = subprocess.run(
         [
             sys.executable,
             str(ENFORCE),
             "--repo",
-            str(ROOT),
+            str(repo),
             "--adapter",
             adapter,
             "--baseline",
-            str(ROOT / ".ai-ratchet-gate" / "baselines" / seed_name),
+            str(seed),
             "--subject",
-            f"repo:self-test@{adapter}",
+            f"repo:fixture@{adapter}",
             "--receipt",
             str(receipt),
         ],
@@ -254,5 +413,11 @@ def test_enforce_self_repo_seeds_allow_on_current_tree(
         capture_output=True,
         text=True,
     ).returncode
-    assert code == 0, (adapter, code, receipt.read_text(encoding="utf-8") if receipt.exists() else "")
-    assert json.loads(receipt.read_text(encoding="utf-8"))["decision"]["status"] == "allow"
+    assert code == 0, (
+        adapter,
+        code,
+        receipt.read_text(encoding="utf-8") if receipt.exists() else "",
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8"))["decision"]["status"] == (
+        "allow"
+    )
