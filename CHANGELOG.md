@@ -6,6 +6,9 @@
 
 ### 追加
 
+- 解決知識Harness（[ADR-0007](docs/adr/ADR-0007-solution-harness-loop.md)）:
+  pre-verify → exact resolver適用 → post-verify → resolution receipt。
+  対象固有mutation resolverは内蔵しない。#24 の fact-output ADR-0006 と番号を分離した
 - 運用接続: `scripts/enforce_observe_evaluate.py`（既存`observe`→`evaluate`だけを消費。
   公開CLIは増やさない）。`.ai-ratchet-gate/baselines/*.v1.json` seed、
   CIのEnforce observe→evaluateステップ、`.pre-commit-hooks.yaml`（legacy入口）
