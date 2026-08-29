@@ -36,15 +36,9 @@ jobs:
 
       - name: Enforce observe→evaluate (built-in adapters)
         run: |
-          python scripts/enforce_observe_evaluate.py \
-            --adapter git.tracked_ignored \
-            --baseline .ai-ratchet-gate/baselines/git.tracked_ignored.v1.json
-          python scripts/enforce_observe_evaluate.py \
-            --adapter skills.provenance \
-            --baseline .ai-ratchet-gate/baselines/skills.provenance.v1.json
-          python scripts/enforce_observe_evaluate.py \
-            --adapter test.disable \
-            --baseline .ai-ratchet-gate/baselines/test.disable.v1.json
+          python scripts/enforce_observe_evaluate.py --adapter git.tracked_ignored --baseline .ai-ratchet-gate/baselines/git.tracked_ignored.v1.json
+          python scripts/enforce_observe_evaluate.py --adapter skills.provenance --baseline .ai-ratchet-gate/baselines/skills.provenance.v1.json
+          python scripts/enforce_observe_evaluate.py --adapter test.disable --baseline .ai-ratchet-gate/baselines/test.disable.v1.json
 
       - name: Build and install release artifacts
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
