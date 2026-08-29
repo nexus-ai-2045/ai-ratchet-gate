@@ -16,6 +16,9 @@
 - 回帰: finding件数上限、rule軸非相殺、observe modeの誤検知収集、enforceスクリプト
 - enforce: baseline seedのduplicate-key拒否（CLI `_read_json`再利用）、任意`--waiver`フォワード、
   receipt親directory失敗をexit 2、unitは一時repoのみ
+- #17 取り込み後の ADR 番号衝突解消: fact-output を
+  [ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md) へ改番（skills の ADR-0004 は維持）。
+  `agent.fact_output` は read-only CLI であり第四 built-in observe adapter ではない
 
 - 第三built-in adapter `test.disable`（[ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
   [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）。

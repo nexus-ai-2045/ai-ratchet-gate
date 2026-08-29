@@ -37,6 +37,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | `test.disable`（skip / only / hollow） | 提供中 (opt-in。`observe --adapter test.disable`。Issue #11) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
+| `agent.fact_output`（structured claim/source） | 提供中 (read-only CLI。第四 built-in observe adapterではない。[ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md)。各 runtime は pre-render hook + negative smoke が揃うまで `not_enforced`) |
 | memory / agent設定 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
