@@ -44,8 +44,9 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 返した安定Finding IDをレビュー済みbaselineと比較し、`accepted / new / resolved`を機械判定して
 入力digest付きreceiptを返します。Gitの`tracked ∧ ignored`検査は既存CLI互換を維持しています。
 
-同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約を、将来memory、skills、
-tool権限、agent設定、evalなどへ適用できます。Hermes Agentなどが
+同じ「既存負債は直ちに全修復させず、新しい悪化だけを止める」契約は、既に
+`git.tracked_ignored`・`skills.provenance`・`test.disable`へ適用済みです。
+将来の候補は memory・agent設定・eval など（ROADMAP Phase 2）です。Hermes Agentなどが
 知識や手順を学習・再利用する層だとすれば、本ツールはその変化が安全基準を後退させていないかを
 外側から決定論的に検査する補完層です。
 
@@ -227,8 +228,9 @@ deny 時のエラー文には修復手順が同梱されます:
 - [imbue-ai/ratchets](https://github.com/imbue-ai/ratchets) (lint 予算型、agent-friendly を明示)
 - [iangrunert/git-ratchet](https://github.com/iangrunert/git-ratchet) (汎用計測値の ratchet)
 
-これらは lint 違反数や計測値を対象にしています。本ゲートは **git の状態矛盾そのもの**を
-不変条件として扱う点が異なります。
+これらは lint 違反数や計測値を対象にしています。本ゲートの最初の不変条件は
+**git の状態矛盾（tracked ∧ ignored）**であり、さらに opt-in で skill provenance と
+テスト無効化（skip / only / hollow）も同じ ratchet 契約で扱います。
 
 ## テスト
 
