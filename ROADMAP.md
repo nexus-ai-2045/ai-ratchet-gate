@@ -21,8 +21,9 @@ AI Ratchet Gateは、AIエージェントが変更するリポジトリ、memory
 Agent Skillsの`SKILL.md` / `scripts/`を対象にした第二アダプター`skills.provenance`、
 およびテスト無効化（skip / only / hollow）を対象にした第三アダプター`test.disable`です。
 Memory管理、skill生成、エージェント実行、品質全般の評価はまだ提供していません。
-v1.0には3種類以上の独立アダプターが必要であり、built-inは3種そろったが、
-threat-model網羅・運用接続・人間停止線の文書化などを含め、本時点ではv1.0完了を主張しません。
+v1.0には3種類以上の独立アダプターが必要であり、built-inは3種そろった。
+脅威モデル回帰表・observe→evaluate運用接続・人間停止線の運用正本（OPERATIONS）も揃えたが、
+branch protection必須化やv1.0宣言そのものは人間所有のため、本時点ではv1.0完了を主張しません。
 
 ## Phase 1: 共通ラチェット契約
 
@@ -43,7 +44,8 @@ adapter化、receipt、waiver検証（Next Action 1–4）に加え、第二adap
 `skills.provenance`（Next Action 5 / [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）と
 第三adapter `test.disable`（Next Action 6 / [ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
 [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）も実装済み。
-v1.0完了にはthreat-model網羅と運用接続などがなお必要。
+脅威モデル回帰表と運用接続（CI / local / pre-commitレシピ）は実装済み。
+v1.0宣言とbranch protection必須化は人間停止線。
 
 ## Phase 2: AI運用向け参照アダプター
 
@@ -71,22 +73,29 @@ secretやPIIを含み得るmemory検査は、証拠漏洩と誤検知の設計�
 
 ## Phase 3: エージェント横断の接続
 
-- pre-commit、CI、ローカルrunnerから同じ判定を利用できるようにする
+- ~~pre-commit、CI、ローカルrunnerから同じ判定を利用できるようにする~~
+  （実装済み: `scripts/enforce_observe_evaluate.py`、CI Enforceステップ、
+  `.pre-commit-hooks.yaml`、OPERATIONSの導入先レシピ。公開CLIは増やさない）
 - Codex、Hermes Agentなど特定製品に依存しないファイル／CLI契約を維持する
 - 外部ツールが生成したmemoryやskillsも、明示された対象だけread-onlyで検査する
 - 複数アダプターのreceiptを統合し、どの不変条件が停止理由か追跡可能にする
-- commit、PR、merge、release等の境界で再観測するreceding-horizon型PDCAを運用する
+  （未実装。軸ごとのreceiptは出るが、横断統合ビューはまだ）
+- ~~commit、PR、merge、release等の境界で再観測するreceding-horizon型PDCAを運用する~~
+  （文書化済み: OPERATIONS。自動mergeはしない）
 
 自動化はscan、decision、receipt、修復案、baseline縮小候補までとします。baseline拡大、waiver承認、
-enforce昇格、merge、release、公開、外部送信は人間停止線です。
+enforce昇格、merge、release、公開、外部送信は人間停止線です。正本は[OPERATIONS.md](OPERATIONS.md)。
 
 ## v1.0の判断基準
 
-- 3種類以上の独立アダプターが共通契約で動作する
-- baselineの追加・縮小・schema migrationがレビュー可能である
+証拠は揃いつつあるが、**完了宣言は人間が照合して行う**（このファイルだけでは主張しない）。
+
+- 3種類以上の独立アダプターが共通契約で動作する（built-in 3: git / skills / test）
+- baselineの追加・縮小・schema migrationがレビュー可能である（OPERATIONSに手順）
 - 誤検知、観測失敗、入力改ざんを含む脅威モデルと回帰テストがある
-- 特定のLLM、エージェント、ホストサービスなしで検査を再現できる
-- hookを迂回できる範囲と、CIなど運用側が担う強制境界を文書化している
+  （`docs/threat-model.md`の回帰表）
+- 特定のLLM、エージェント、ホストサービスなしで検査を再現できる（observe/evaluate）
+- hookを迂回できる範囲と、CIなど運用側が担う強制境界を文書化している（OPERATIONS）
 
 ## 非目標
 

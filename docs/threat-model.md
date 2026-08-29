@@ -77,4 +77,21 @@
 
 baseline拡大、waiver追加・延長、adapterのenforce昇格、schemaの判定意味変更は人間レビュー対象とする。
 自動化は差分とreceiptを準備できるが、承認そのものは行わない。merge、release、公開、外部送信も
-この脅威モデルの外側にある明示承認境界である。
+この脅威モデルの外側にある明示承認境界である。運用接続・停止線・hook迂回の正本は
+[OPERATIONS.md](../OPERATIONS.md)とする。
+
+## 回帰テスト対応（v1.0基準: 誤検知・観測失敗・入力改ざん）
+
+網羅の正本はこの表。新規の脅威主張は、ここに行を足し、対応テストを先に追加する。
+
+| 分類 | 脅威 / 主張 | 主な回帰 |
+|---|---|---|
+| 誤検知 | `mode=observe`は新規findingでもallow（収集用）。enforcementは`ratchet`/`strict` | `tests/test_engine.py::test_threat_observe_mode_collects_misdetection_without_deny`、`scripts/enforce_observe_evaluate.py`が`--mode observe`を拒否 |
+| 誤検知 | message変更だけではIDが変わらない（理由の言い換えで監視から消えない） | `tests/test_waiver.py::test_threat_path_rename_or_reason_disguise_creates_new_id` |
+| 観測失敗 | git列挙不能・repo外・timeoutは成功にしない | `tests/test_engine.py`（timeout）、`tests/test_generic_cli.py::test_observe_cli_fails_closed_outside_git_repo`、legacy exit 2 |
+| 観測失敗 | skills/testのsymlink・非UTF-8・曖昧構文はfail-closed | `tests/test_skill_provenance.py`、`tests/test_test_disable.py` |
+| 入力改ざん | 未知schema、subject replay、他subject baseline、duplicate ID | `tests/test_generic_cli.py`、`tests/test_engine.py::test_duplicate_finding_id_is_rejected` |
+| 入力改ざん | finding件数爆発・過大JSON | `tests/test_engine.py::test_too_many_findings_fail_closed`、`test_observe_cli_rejects_observation_exceeding_evaluate_limit` |
+| 入力改ざん | 一軸改善で他軸悪化を相殺しない | `tests/test_engine.py::test_threat_rule_axis_improvement_does_not_offset_new_worsening`、skills/waiverの軸非相殺テスト |
+| 入力改ざん | baseline拡大をresolvedと混同しない | `tests/test_waiver.py::test_threat_baseline_enlargement_is_not_a_resolved_finding` |
+| 運用 | observe→evaluateの運用接続がdeny/allowを既存CLIと同じexitで返す | `tests/test_enforce_observe_evaluate.py` |

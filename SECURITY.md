@@ -15,7 +15,8 @@
 ## 安全上の前提
 
 - 検査は既定でread-onlyです。
-- 書き込みは`--update-baseline`で指定したbaselineファイルだけです。
+- 書き込みは`--update-baseline`で指定したbaselineファイルと、明示したreceiptだけです。
 - baseline更新とhook変更は、人間がdiffをレビューします。
 - skipはファイルを変更しないため、事前承認を得て、実行出力をレビュー記録へ残します。
 - 検査成功をpush、公開、mergeの承認として扱いません。
+- hook迂回範囲とCIなど運用側の強制境界は[OPERATIONS.md](OPERATIONS.md)を正本とします。

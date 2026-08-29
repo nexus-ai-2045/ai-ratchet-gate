@@ -1,0 +1,10 @@
+# このrepositoryを pre-commit hook 元として使う場合の定義。
+# observe→evaluate の汎用判定は scripts/enforce_observe_evaluate.py（checkout利用）
+# または OPERATIONS.md のレシピで既存 CLI を呼ぶ。公開 API は増やさない。
+- id: ai-ratchet-gate
+  name: ai-ratchet-gate (legacy tracked∧ignored)
+  description: tracked∧ignored の増分を legacy CLI で deny する（同じ TrackedIgnoredAdapter）
+  entry: ai-ratchet-gate
+  language: python
+  pass_filenames: false
+  always_run: true

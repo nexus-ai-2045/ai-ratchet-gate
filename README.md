@@ -32,6 +32,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
 | 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記3個) |
+| local/CI の observe→evaluate 運用接続 | 提供中 (`scripts/enforce_observe_evaluate.py`。本repo CIで3 adapterをenforce) |
 | `skills.provenance`（SKILL.md / scripts） | 提供中 (opt-in。`observe --adapter skills.provenance`) |
 | `test.disable`（skip / only / hollow） | 提供中 (opt-in。`observe --adapter test.disable`。Issue #11) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
@@ -217,7 +218,7 @@ deny 時のエラー文には修復手順が同梱されます:
 - baseline はパス／finding ID集合なので net-zero swap (1 件消して別の 1 件を足す) は**検出できる**が、
   同一キーが baseline に出入りを繰り返す「往復発散」は検出しない
 - hook を素通りする経路 (`--no-verify`、hook 未導入環境からの commit) は止められない。
-  関所の網羅は運用側の責務
+  関所の網羅は運用側の責務。迂回範囲とCI強制境界の正本は[OPERATIONS.md](OPERATIONS.md)
 
 ## 先行事例
 

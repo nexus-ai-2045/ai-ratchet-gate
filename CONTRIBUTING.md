@@ -20,7 +20,16 @@ Python自身にtest依存があることを先に検査し、別のPython環境�
 表示して停止します。
 
 5. repo-preflightでsecret候補、個人path、必須文書、差分整合性を検査する。
-6. commit、push、Pull Request、mergeはそれぞれの承認境界を守る。
+6. 汎用判定をlocalで再現する場合は次も実行できる（CIと同じ判定経路）。
+
+```bash
+python scripts/enforce_observe_evaluate.py \
+  --adapter git.tracked_ignored \
+  --baseline .ai-ratchet-gate/baselines/git.tracked_ignored.v1.json
+```
+
+運用接続・人間停止線・hook迂回の正本は[OPERATIONS.md](OPERATIONS.md)。
+7. commit、push、Pull Request、mergeはそれぞれの承認境界を守る。
 
 ## レビュー指摘後の再検証
 
