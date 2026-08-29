@@ -6,6 +6,9 @@
 - skill provenance（新規SKILL.md、`allowed-tools`拡大、無制限tools、scripts payload digest変更）を
   増やさないという不変条件。`SKILL.md`本文のみの変更はevidenceでありfinding IDが変わらないが、
   companion `scripts/`の内容変更は新しい`executable_asset` findingとしてdenyする
+- テスト無効化（無条件skip、`.only`/`fit`/`fdescribe`、空洞assert）を増やさないという不変条件。
+  `skipif`はC1に含めず、`test.todo`はhollowではない。自由記述reasonは許可条件にしない。
+  C4（削除・rename）と逆さまテストはスコープ外
 - baseline変更を差分としてレビューできること
 - 検査不能を成功として扱わないこと
 - findingの安定した同一性と、軸ごとの新規悪化を相殺しないこと
@@ -19,6 +22,8 @@
 - git実行不能、対象パス不正、baseline欠落
 - skills root欠落、列挙不能、symlink／path traversalによるrepo外参照
 - `SKILL.md` frontmatter欠落や曖昧な`allowed-tools`解釈
+- テストファイル列挙不能、symlink、非UTF-8、曖昧なJS/TS構文、Python構文エラー
+- 無条件skipを自由記述reasonで正当化する試み（機械許可条件にしない）
 - rule_idやsubject_keyの入替によるfinding偽装
 - baselineの意図しない拡大やskipの常用
 - schema downgrade、未知schema、baseline改ざん
@@ -39,6 +44,9 @@
 - skillの安定キーはrepo相対pathとし、declared nameへの静かな合流を避ける
 - `scripts/` payload digestを`executable_asset`のsubject_keyへ含め、内容改変をdenyする
 - `SKILL.md`本文digestはevidenceのみ（本文のみ編集ではfinding ID不変）
+- テスト走査のsymlink・非UTF-8・曖昧構文はfail-closed。安定キーは`file::qualified-name`（NFC。`/`符号化）
+- `focused_only`は既存`strict` modeで1件でもdeny（新契約を増やさない）
+- 自由記述skip reasonは許可条件にせず、例外は既存`waivers/v1`だけを消費する
 - 一軸のwaiverや改善で他軸（例: tool拡大とscripts digest変更）を相殺しない
 - baseline更新とskipを人間レビュー対象として運用文書に残す
 - 未知schema、identity不一致、重複IDをfail-closedにする。期限付きwaiverはbaselineと分離し、
@@ -60,6 +68,8 @@
 - 悪意ある利用者によるコード、baseline、CI設定そのものの改変
 - 任意の第三者adapterを安全に隔離するsandbox
 - LLM出力の意味的正しさや、形式化されていない未知障害の検出
+- 逆さまテスト（仕様をバグに固定する健全に見えるassert）の検出
+- テスト削除・rename・収集対象外化（C4）の検出
 - hookを迂回する管理者を、このパッケージ単体で阻止すること
 - receipt自己hashによる作成者の真正性証明（必要なら外層の署名・CI attestationを使う）
 

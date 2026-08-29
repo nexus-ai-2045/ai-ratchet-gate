@@ -6,6 +6,18 @@
 
 ### 追加
 
+- 第三built-in adapter `test.disable`（[ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
+  [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）。
+  Python + JS/TSのテスト無効化をread-only観測し、
+  `unconditional_skip` / `focused_only` / `hollow_test`を独立軸のFindingとして出す。
+  `skipif`はC1に含めず、`test.todo`はhollowではない。自由記述reasonは許可条件にせず
+  既存`waivers/v1`を消費。C2は既存`strict`（新契約ではない）。C4・逆さまテストはスコープ外。
+  `observe --adapter test.disable`でopt-in。既定の`git.tracked_ignored`とlegacy CLIは維持
+- 脅威モデル回帰: symlink、非UTF-8、曖昧構文、skipif非検知、todo非hollow、
+  waiver例外、他adapter baselineによるidentity偽装拒否
+- OPERATIONSへ`test.disable`の導入・日常・ロールバック手順を追記
+- ADR indexにADR-0005を掲載
+
 - 第二built-in adapter `skills.provenance`（[ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）。
   Agent Skillsの`SKILL.md` YAML frontmatterとsibling `scripts/`を、`.agents/skills/`と
   `skills/`（存在するrootだけ）からread-only観測し、
@@ -55,6 +67,7 @@
 - 新しい汎用判定は`observe` / `evaluate` subcommandとしてopt-in提供
 - waiver契約は`--waiver`指定時のみ有効。未指定時の既存evaluate挙動は維持
 - `skills.provenance`は`--adapter skills.provenance`指定時のみ有効。未指定時は`git.tracked_ignored`
+- `test.disable`は`--adapter test.disable`指定時のみ有効。未指定時は`git.tracked_ignored`
 
 ### 安全性
 
@@ -64,6 +77,8 @@
 - 期限切れ・scope外・review binding不一致・未知schemaのwaiverはfail-closed。一軸のwaiverで他軸の新規悪化を相殺しない
 - skills rootのsymlink、曖昧frontmatter、path spoofはfail-closed。skill安定キーはrepo相対path
 - `scripts/` payload digestは`executable_asset`のdeny軸。`SKILL.md`本文のみはevidence（ID不変）
+- テスト走査のsymlink・非UTF-8・曖昧構文はfail-closed。`subject_key`は`file::test-name`（NFC）
+- 自由記述skip reasonは許可条件にしない。`focused_only`は既存`strict`で常時deny
 
 ## [0.1.1] - 2026-08-19
 
