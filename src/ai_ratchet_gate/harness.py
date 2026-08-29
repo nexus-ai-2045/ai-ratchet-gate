@@ -9,10 +9,10 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from .engine import Resolution
+from .engine import Resolution, SolutionKnowledge
 from .model import RatchetError
 
-RECEIPT_SCHEMA = "ai-ratchet-gate.resolution-receipt/v1"
+RECEIPT_SCHEMA = "ai-ratchet-gate.resolution-receipt/v2"
 
 
 def _nonempty(value: object, name: str) -> str:
@@ -96,7 +96,8 @@ class ResolutionReceipt:
     resolver_version: str | None
     before_sha256: str
     after_sha256: str
-    verification: Verification | None
+    pre_verification: Verification | None
+    post_verification: Verification | None
     receipt_sha256: str
 
     def to_dict(self) -> dict[str, object]:
@@ -113,18 +114,23 @@ class ResolutionReceipt:
             "resolver_version": self.resolver_version,
             "before_sha256": self.before_sha256,
             "after_sha256": self.after_sha256,
-            "verification": (
-                {
-                    "resolved": self.verification.resolved,
-                    "verifier_id": self.verification.verifier_id,
-                    "verifier_version": self.verification.verifier_version,
-                    "evidence_sha256": self.verification.evidence_sha256,
-                }
-                if self.verification
-                else None
-            ),
+            "pre_verification": _verification_dict(self.pre_verification),
+            "post_verification": _verification_dict(self.post_verification),
             "receipt_sha256": self.receipt_sha256,
         }
+
+
+def _verification_dict(verification: Verification | None) -> dict[str, object] | None:
+    return (
+                {
+                    "resolved": verification.resolved,
+                    "verifier_id": verification.verifier_id,
+                    "verifier_version": verification.verifier_version,
+                    "evidence_sha256": verification.evidence_sha256,
+                }
+                if verification
+                else None
+    )
 
 
 def _receipt(
@@ -140,7 +146,8 @@ def _receipt(
     resolver_version: str | None,
     before_sha256: str,
     after_sha256: str,
-    verification: Verification | None,
+    pre_verification: Verification | None,
+    post_verification: Verification | None,
 ) -> ResolutionReceipt:
     context = _sha256(knowledge_context_sha256, "knowledge_context_sha256")
     evidence = (
@@ -161,16 +168,8 @@ def _receipt(
         "resolver_version": resolver_version,
         "before_sha256": _sha256(before_sha256, "before_sha256"),
         "after_sha256": _sha256(after_sha256, "after_sha256"),
-        "verification": (
-            {
-                "resolved": verification.resolved,
-                "verifier_id": verification.verifier_id,
-                "verifier_version": verification.verifier_version,
-                "evidence_sha256": verification.evidence_sha256,
-            }
-            if verification
-            else None
-        ),
+        "pre_verification": _verification_dict(pre_verification),
+        "post_verification": _verification_dict(post_verification),
     }
     digest = hashlib.sha256(_canonical(body)).hexdigest()
     return ResolutionReceipt(
@@ -185,7 +184,8 @@ def _receipt(
         resolver_version=resolver_version,
         before_sha256=body["before_sha256"],
         after_sha256=body["after_sha256"],
-        verification=verification,
+        pre_verification=pre_verification,
+        post_verification=post_verification,
         receipt_sha256=digest,
     )
 
@@ -226,12 +226,20 @@ def _verify_without_mutation(
         if observed != expected_sha256:
             raise RatchetError("verifier_mutated_target") from error
         raise RatchetError("verifier_failed") from error
-    if not isinstance(verification, Verification):
-        raise RatchetError("invalid_verification_result")
     observed = _snapshot(target, snapshot, "verification_state_sha256")
     if observed != expected_sha256:
         raise RatchetError("verifier_mutated_target")
-    return verification
+    if not isinstance(verification, Verification):
+        raise RatchetError("invalid_verification_result")
+    validated = Verification.create(
+        resolved=verification.resolved,
+        verifier_id=verification.verifier_id,
+        verifier_version=verification.verifier_version,
+        evidence_sha256=verification.evidence_sha256,
+    )
+    if validated != verification:
+        raise RatchetError("invalid_verification_result")
+    return validated
 
 
 def run_resolution_loop(
@@ -266,12 +274,17 @@ def run_resolution_loop(
             resolver_version=None,
             before_sha256=before,
             after_sha256=before,
-            verification=None,
+            pre_verification=None,
+            post_verification=None,
         )
 
     if resolution.status != "known" or resolution.knowledge is None:
         raise RatchetError("invalid_resolution")
     knowledge = resolution.knowledge
+    try:
+        knowledge = SolutionKnowledge.from_dict(knowledge.to_dict())
+    except (AttributeError, TypeError, RatchetError) as error:
+        raise RatchetError("invalid_solution_knowledge") from error
     if knowledge.problem_key != resolution.problem_key:
         raise RatchetError("problem_key_mismatch")
 
@@ -295,16 +308,30 @@ def run_resolution_loop(
             resolver_version=knowledge.resolver_version,
             before_sha256=before,
             after_sha256=before,
-            verification=pre,
+            pre_verification=pre,
+            post_verification=None,
         )
 
     key = (knowledge.resolver_id, knowledge.resolver_version)
     binding = resolvers.get(key)
     if binding is None:
         raise RatchetError("resolver_not_registered")
+    try:
+        validated_binding = ResolverBinding.create(
+            resolver_id=binding.resolver_id,
+            resolver_version=binding.resolver_version,
+            apply=binding.apply,
+        )
+    except (AttributeError, TypeError, RatchetError) as error:
+        raise RatchetError("invalid_resolver_binding") from error
+    if validated_binding != binding or (
+        validated_binding.resolver_id,
+        validated_binding.resolver_version,
+    ) != key:
+        raise RatchetError("resolver_binding_identity_mismatch")
 
     try:
-        binding.apply(target)
+        validated_binding.apply(target)
     except Exception as error:
         raise RatchetError("resolver_apply_failed") from error
 
@@ -328,5 +355,6 @@ def run_resolution_loop(
         resolver_version=knowledge.resolver_version,
         before_sha256=before,
         after_sha256=after,
-        verification=post,
+        pre_verification=pre,
+        post_verification=post,
     )

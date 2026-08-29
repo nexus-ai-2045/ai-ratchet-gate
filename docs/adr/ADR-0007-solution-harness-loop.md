@@ -1,4 +1,4 @@
-# ADR-0004: 解決知識を適用・再検証するHarness境界
+# ADR-0007: 解決知識を適用・再検証するHarness境界
 
 - Status: Proposed
 - Date: 2026-08-29

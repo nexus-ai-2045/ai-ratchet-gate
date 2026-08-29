@@ -1,7 +1,7 @@
 # アーキテクチャ
 
 汎用化の設計判断は[ADR-0001](adr/ADR-0001-generic-ratchet-engine.md)、用語の境界は
-[先行概念との関係](prior-art.md)を正本とする。解決知識の再利用はADR-0003、適用・再検証Harness境界はADR-0004を正本とする。
+[先行概念との関係](prior-art.md)を正本とする。解決知識の再利用はADR-0003、適用・再検証Harness境界はADR-0007を正本とする。
 
 ## Repository責務
 

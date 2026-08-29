@@ -3,7 +3,12 @@ import json
 
 import pytest
 
-from ai_ratchet_gate.engine import SolutionKnowledge, compose_knowledge, resolve_problem
+from ai_ratchet_gate.engine import (
+    Resolution,
+    SolutionKnowledge,
+    compose_knowledge,
+    resolve_problem,
+)
 from ai_ratchet_gate.harness import (
     ResolverBinding,
     Verification,
@@ -75,7 +80,8 @@ def test_known_problem_is_applied_reverified_and_context_bound():
     assert receipt.status == "resolved"
     assert receipt.applied is True
     assert calls == ["apply"]
-    assert receipt.verification and receipt.verification.resolved
+    assert receipt.pre_verification and not receipt.pre_verification.resolved
+    assert receipt.post_verification and receipt.post_verification.resolved
     assert receipt.before_sha256 != receipt.after_sha256
     assert receipt.knowledge_context_sha256 == context()
     assert receipt.knowledge_id == resolution.knowledge.knowledge_id
@@ -123,7 +129,8 @@ def test_postverify_failure_is_not_reported_as_success():
 
     assert receipt.status == "verification_failed"
     assert receipt.applied is True
-    assert receipt.verification and not receipt.verification.resolved
+    assert receipt.pre_verification and not receipt.pre_verification.resolved
+    assert receipt.post_verification and not receipt.post_verification.resolved
 
 
 def test_missing_or_duplicate_resolver_fails_closed():
@@ -261,4 +268,127 @@ def test_invalid_knowledge_context_is_rejected_before_mutation():
             snapshot=sha,
             verify=verify,
         )
+    assert target == {"bad": True}
+
+
+def test_direct_verification_fields_are_revalidated_before_use():
+    target = {"bad": True}
+    calls = []
+    binding = ResolverBinding.create(
+        resolver_id="demo.clear-flag",
+        resolver_version="1",
+        apply=lambda _state: calls.append("apply"),
+    )
+
+    def invalid_verify(_target, _problem):
+        return Verification("false", "demo.verify", "1", sha("evidence"))
+
+    with pytest.raises(RatchetError, match="invalid_resolved"):
+        run(
+            knowledge(),
+            target,
+            resolvers=build_resolver_registry([binding]),
+            verifier=invalid_verify,
+        )
+    assert calls == []
+    assert target == {"bad": True}
+
+
+def test_registry_binding_identity_is_revalidated_before_apply():
+    target = {"bad": True}
+    calls = []
+    mismatched = ResolverBinding.create(
+        resolver_id="evil.resolver",
+        resolver_version="9",
+        apply=lambda _state: calls.append("apply"),
+    )
+
+    with pytest.raises(RatchetError, match="resolver_binding_identity_mismatch"):
+        run(
+            knowledge(),
+            target,
+            resolvers={("demo.clear-flag", "1"): mismatched},
+        )
+    assert calls == []
+    assert target == {"bad": True}
+
+
+def test_invalid_verifier_result_after_mutation_reports_state_drift():
+    target = {"bad": True}
+
+    def mutate_then_return_invalid(state, _problem):
+        state["touched"] = True
+        return True
+
+    with pytest.raises(RatchetError, match="verifier_mutated_target"):
+        run(
+            knowledge(),
+            target,
+            resolvers={},
+            verifier=mutate_then_return_invalid,
+        )
+
+
+def test_receipt_preserves_pre_and_post_verification_evidence():
+    target = {"bad": True}
+    calls = 0
+
+    def phase_verify(state, _problem):
+        nonlocal calls
+        calls += 1
+        return Verification.create(
+            resolved=not state["bad"],
+            verifier_id="demo.verify",
+            verifier_version="1",
+            evidence_sha256=sha({"phase": calls, "target": state}),
+        )
+
+    binding = ResolverBinding.create(
+        resolver_id="demo.clear-flag",
+        resolver_version="1",
+        apply=lambda state: state.__setitem__("bad", False),
+    )
+    receipt = run(
+        knowledge(),
+        target,
+        resolvers=build_resolver_registry([binding]),
+        verifier=phase_verify,
+    )
+
+    assert receipt.pre_verification and not receipt.pre_verification.resolved
+    assert receipt.post_verification and receipt.post_verification.resolved
+    assert (
+        receipt.pre_verification.evidence_sha256
+        != receipt.post_verification.evidence_sha256
+    )
+    assert receipt.to_dict()["schema"] == "ai-ratchet-gate.resolution-receipt/v2"
+
+
+def test_direct_solution_knowledge_is_revalidated_before_apply():
+    target = {"bad": True}
+    calls = []
+    valid = knowledge()
+    invalid = SolutionKnowledge(
+        knowledge_id=valid.knowledge.knowledge_id,
+        problem_key=valid.problem_key,
+        resolver_id=valid.knowledge.resolver_id,
+        resolver_version=valid.knowledge.resolver_version,
+        scope=valid.knowledge.scope,
+        evidence_sha256="not-a-digest",
+        source=valid.knowledge.source,
+    )
+    resolution = Resolution(valid.problem_key, "known", invalid, "fixture")
+    binding = ResolverBinding.create(
+        resolver_id="demo.clear-flag",
+        resolver_version="1",
+        apply=lambda _state: calls.append("apply"),
+    )
+
+    with pytest.raises(RatchetError, match="invalid_solution_knowledge"):
+        run(
+            resolution,
+            target,
+            resolvers=build_resolver_registry([binding]),
+        )
+    assert calls == []
     assert target == {"bad": True}
