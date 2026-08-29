@@ -11,6 +11,15 @@ from .adapters import (
 )
 from .engine import evaluate
 from .model import Decision, Finding, Observation, RatchetError
+from .operation_contracts import (
+    ResidualItem,
+    build_operation_receipt,
+    classify_residuals,
+    verify_scope_binding,
+    verify_operation_receipt,
+    verify_residual_report,
+    verify_scope_binding_receipt,
+)
 from .receipt import build_receipt
 from .waiver import (
     WaiverDocument,
@@ -47,6 +56,7 @@ __all__ = [
     "Finding",
     "Observation",
     "RatchetError",
+    "ResidualItem",
     "ScanContext",
     "SkillProvenanceAdapter",
     "TestDisableAdapter",
@@ -54,10 +64,16 @@ __all__ = [
     "WaiverDocument",
     "WaiverRecord",
     "build_receipt",
+    "build_operation_receipt",
+    "classify_residuals",
     "evaluate",
     "observation_digest",
     "review_binding_sha256",
     "select_waived_finding_ids",
+    "verify_scope_binding",
+    "verify_operation_receipt",
+    "verify_residual_report",
+    "verify_scope_binding_receipt",
 ]
 
 __version__ = "0.1.1"

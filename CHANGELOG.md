@@ -6,6 +6,11 @@
 
 ### 追加
 
+- 外部操作・scope・残務のopt-in証拠契約（[ADR-0008](docs/adr/ADR-0008-operation-evidence-contracts.md)）。
+  command終了と独立readbackのAND、明示target rootへのpath束縛、task/repo/UI残務と
+  unrelated existing WIPの分離を、canonical JSON自己hash付きreceiptで固定した。
+  既存`ResolutionReceipt v2`、CLI、adapter、baselineの意味は変更しない
+
 - 解決知識Harness（[ADR-0007](docs/adr/ADR-0007-solution-harness-loop.md)）:
   pre-verify → exact resolver適用 → post-verify → resolution receipt。
   対象固有mutation resolverは内蔵しない。#24 の fact-output ADR-0006 と番号を分離した

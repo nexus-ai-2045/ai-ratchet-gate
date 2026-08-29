@@ -38,6 +38,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
 | `agent.fact_output`（structured claim/source） | 提供中 (read-only CLI。第四 built-in observe adapterではない。[ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md)。各 runtime は pre-render hook + negative smoke が揃うまで `not_enforced`) |
+| operation evidence contracts | 提供中 (opt-in Python API。外部操作receipt / target scope / 残務分類。[ADR-0008](docs/adr/ADR-0008-operation-evidence-contracts.md)) |
 | memory / agent設定 / eval | **未実装** (構想。ROADMAP Phase 2 以降) |
 
 ## 現在の実装と構想
@@ -81,6 +82,11 @@ AIエージェント運用でこれが効くのは、エージェントが「直
   検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
   対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /
   [ADR-0003](docs/adr/ADR-0003-solution-knowledge-propagation.md)）
+- `build_operation_receipt`で、command終了と別証拠のreadbackが一致した時だけ`evidence_consistent`にする。未信頼JSONは`verify_operation_receipt`で再計算する
+- `verify_scope_binding`で、process cwdではなく明示target rootへ観測pathを束縛し、保存済みreceiptは`verify_scope_binding_receipt`で再検証する
+- `classify_residuals`でtask/repo/UI残務と、別ownerの証拠付き既存WIPを分離し、保存済みreportは`verify_residual_report`で再検証する
+  （すべてopt-in Python API。mutation primitiveは内蔵しない。契約は
+  [ADR-0008](docs/adr/ADR-0008-operation-evidence-contracts.md)）
 
 ## なぜ要るか
 
