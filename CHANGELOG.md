@@ -14,6 +14,8 @@
   hook迂回範囲とCI強制境界、誤検知手順、baseline追加/縮小/migration）
 - 脅威モデルに誤検知・観測失敗・入力改ざんの回帰対応表を追加
 - 回帰: finding件数上限、rule軸非相殺、observe modeの誤検知収集、enforceスクリプト
+- enforce: baseline seedのduplicate-key拒否（CLI `_read_json`再利用）、任意`--waiver`フォワード、
+  receipt親directory失敗をexit 2、unitは一時repoのみ
 
 - 第三built-in adapter `test.disable`（[ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
   [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）。

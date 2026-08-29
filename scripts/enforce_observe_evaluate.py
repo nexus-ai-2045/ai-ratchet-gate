@@ -16,6 +16,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ai_ratchet_gate.cli import _read_json
+from ai_ratchet_gate.model import RatchetError
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_BASELINE_KEYS = {
@@ -60,9 +63,13 @@ def _resolve_subject(repo: Path, subject: str | None) -> str:
 
 
 def _load_baseline_seed(path: Path) -> dict[str, object]:
+    """evaluate と同じ duplicate-key 拒否（cli._read_json）で seed を読む。"""
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raw = _read_json(path)
+    except RatchetError as error:
+        print(f"ERROR [enforce]: baseline seed を読めません: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
+    except OSError as error:
         print(f"ERROR [enforce]: baseline seed を読めません: {error}", file=sys.stderr)
         raise SystemExit(2) from error
     if not isinstance(raw, dict) or set(raw) != REQUIRED_BASELINE_KEYS:
@@ -111,6 +118,13 @@ def main(argv: list[str] | None = None) -> int:
         help="レビュー済み baseline seed（finding_ids）。subject は実行時に上書きする",
     )
     parser.add_argument(
+        "--waiver",
+        type=Path,
+        default=None,
+        help="レビュー済み waiver JSON（opt-in）。evaluate へフォワードするだけ。"
+        "追加・延長・承認はしない",
+    )
+    parser.add_argument(
         "--subject",
         default=None,
         help="省略時は repo:nexus-ai-2045/ai-ratchet-gate@<HEAD>",
@@ -145,7 +159,14 @@ def main(argv: list[str] | None = None) -> int:
         baseline = tmpdir / "baseline.json"
         receipt = args.receipt if args.receipt is not None else tmpdir / "receipt.json"
         if args.receipt is not None:
-            receipt.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                receipt.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                print(
+                    f"ERROR [enforce]: receipt 親directoryを作成できません: {error}",
+                    file=sys.stderr,
+                )
+                return 2
 
         # 検査対象repo外へ observation を書く（read-only契約）
         observe_code = _run_cli(
@@ -184,6 +205,8 @@ def main(argv: list[str] | None = None) -> int:
             "--mode",
             args.mode,
         ]
+        if args.waiver is not None:
+            evaluate_args.extend(["--waiver", str(args.waiver.resolve())])
         return _run_cli(evaluate_args)
 
 

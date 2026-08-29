@@ -11,7 +11,7 @@ core契約は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照し
 
 | 入口 | 呼び方 | 備考 |
 |---|---|---|
-| ローカルrunner | `python scripts/enforce_observe_evaluate.py --adapter … --baseline …` | 本repo同梱の運用接続。既存CLIだけをsubprocessで呼ぶ |
+| ローカルrunner | `python scripts/enforce_observe_evaluate.py --adapter … --baseline …`（任意 `--waiver`） | 本repo同梱の運用接続。既存CLIだけをsubprocessで呼ぶ |
 | CI | `.github/workflows/ci.yml` の Enforce observe→evaluate ステップ | 上記スクリプトを3 built-in adapterへ適用 |
 | pre-commit | `.pre-commit-hooks.yaml` の legacy `ai-ratchet-gate`、または下記レシピ | 汎用判定は公開APIを増やさず observe/evaluate を直接呼ぶ |
 
@@ -24,14 +24,34 @@ enforcement側が固定した subject（既定: `repo:nexus-ai-2045/ai-ratchet-g
 ```bash
 SUBJECT="repo:OWNER/NAME@$(git rev-parse HEAD)"
 OUT="$(mktemp -d)"
+SEED=".ai-ratchet-gate/baselines/git.tracked_ignored.v1.json"  # レビュー済み seed
 ai-ratchet-gate observe --repo . --adapter git.tracked_ignored \
   --subject "$SUBJECT" --out "$OUT/observation.json"
 # レビュー済み finding_ids を持つ baseline に subject を束縛してから evaluate
+python - <<'PY' "$SEED" "$SUBJECT" "$OUT/baseline.json"
+import json, sys
+seed_path, subject, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+seed = json.load(open(seed_path, encoding="utf-8"))
+seed["subject"] = subject
+open(out_path, "w", encoding="utf-8").write(
+    json.dumps(seed, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+)
+PY
 ai-ratchet-gate evaluate \
   --observation "$OUT/observation.json" \
   --baseline "$OUT/baseline.json" \
   --expected-subject "$SUBJECT" \
   --receipt "$OUT/receipt.json"
+```
+
+運用接続スクリプトを使う場合は subject 束縛と一時 baseline 作成を代行する。
+
+```bash
+python scripts/enforce_observe_evaluate.py \
+  --adapter git.tracked_ignored \
+  --baseline .ai-ratchet-gate/baselines/git.tracked_ignored.v1.json
+# 任意: レビュー済み waiver を evaluate へフォワード（承認はしない）
+# python scripts/enforce_observe_evaluate.py ... --waiver waivers.json
 ```
 
 exit codeは allow=`0`、deny=`1`、観測不能/schema不正=`2`。hookやCIは `!= 0` で止められる。
