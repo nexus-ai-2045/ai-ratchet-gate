@@ -46,6 +46,10 @@ REQUIRED_SDIST_MATCH_SUFFIXES = (
 )
 ALLOWED_SDIST_SUFFIXES = (
     ".ai-ratchet-gate/baseline.txt",
+    ".ai-ratchet-gate/baselines/git.tracked_ignored.v1.json",
+    ".ai-ratchet-gate/baselines/skills.provenance.v1.json",
+    ".ai-ratchet-gate/baselines/test.disable.v1.json",
+    ".pre-commit-hooks.yaml",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "MANIFEST.in",
@@ -67,6 +71,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "scripts/verify.py",
     "scripts/check_release_artifacts.py",
     "scripts/check_release_changelog.py",
+    "scripts/enforce_observe_evaluate.py",
     "scripts/smoke_install_artifacts.py",
     "src/ai_ratchet_gate/__init__.py",
     "src/ai_ratchet_gate/__main__.py",
@@ -89,6 +94,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "src/ai_ratchet_gate.egg-info/requires.txt",
     "src/ai_ratchet_gate.egg-info/top_level.txt",
     "tests/test_ai_ratchet_gate.py",
+    "tests/test_enforce_observe_evaluate.py",
     "tests/test_engine.py",
     "tests/test_fact_output.py",
     "tests/test_generic_cli.py",
