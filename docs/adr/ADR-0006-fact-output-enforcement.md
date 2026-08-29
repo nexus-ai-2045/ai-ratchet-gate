@@ -1,8 +1,10 @@
-# ADR-0004: structured fact-output enforcement point
+# ADR-0006: structured fact-output enforcement point
 
 - Status: Proposed
 - Date: 2026-08-29
 - Depends on: ADR-0001, ADR-0003
+- Note: 番号は #17 取り込み時に ADR-0004（skills.provenance）と衝突したため ADR-0006 へ改番。
+  skills 側の ADR-0004 は変更しない。
 
 ## Context
 

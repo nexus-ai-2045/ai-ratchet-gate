@@ -6,6 +6,20 @@
 
 ### 追加
 
+- 運用接続: `scripts/enforce_observe_evaluate.py`（既存`observe`→`evaluate`だけを消費。
+  公開CLIは増やさない）。`.ai-ratchet-gate/baselines/*.v1.json` seed、
+  CIのEnforce observe→evaluateステップ、`.pre-commit-hooks.yaml`（legacy入口）
+- sdist allowlistへ運用接続ファイルを追加（Windows CIはバックスラッシュ継続を避けた）
+- OPERATIONSを運用向け正本へ拡充（同一判定の三入口、PDCA境界、人間停止線、
+  hook迂回範囲とCI強制境界、誤検知手順、baseline追加/縮小/migration）
+- 脅威モデルに誤検知・観測失敗・入力改ざんの回帰対応表を追加
+- 回帰: finding件数上限、rule軸非相殺、observe modeの誤検知収集、enforceスクリプト
+- enforce: baseline seedのduplicate-key拒否（CLI `_read_json`再利用）、任意`--waiver`フォワード、
+  receipt親directory失敗をexit 2、unitは一時repoのみ
+- #17 取り込み後の ADR 番号衝突解消: fact-output を
+  [ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md) へ改番（skills の ADR-0004 は維持）。
+  `agent.fact_output` は read-only CLI であり第四 built-in observe adapter ではない
+
 - 第三built-in adapter `test.disable`（[ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
   [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）。
   Python + JS/TSのテスト無効化をread-only観測し、
