@@ -221,7 +221,62 @@ def test_main_fails_closed_without_baseline(tmp_path: Path, capsys) -> None:
 
     # 観測不能 / 前提欠落は違反 (1) と区別して 2 (tool_error 相当)
     assert code == 2
-    assert "baseline" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "baseline" in out
+    # pytest 経由など入口不明時は、インストール済みと互換ラッパーの両方を案内する
+    assert "ai-ratchet-gate --repo . --update-baseline" in out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in out
+    assert "互換入口" in out
+
+
+def test_missing_baseline_recovery_hint_follows_argv0(tmp_path: Path, capsys, monkeypatch) -> None:
+    """argv[0] から入口を推定し、使える復旧コマンドだけを出す。"""
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    missing = tmp_path / "missing.txt"
+
+    monkeypatch.setattr(sys, "argv", ["ai_ratchet_gate.py"])
+    assert main(["--repo", str(tmp_path), "--baseline", str(missing)]) == 2
+    legacy_out = capsys.readouterr().out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in legacy_out
+    assert "ai-ratchet-gate --repo . --update-baseline" not in legacy_out
+
+    monkeypatch.setattr(sys, "argv", ["ai-ratchet-gate"])
+    assert main(["--repo", str(tmp_path), "--baseline", str(missing)]) == 2
+    installed_out = capsys.readouterr().out
+    assert "ai-ratchet-gate --repo . --update-baseline" in installed_out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" not in installed_out
+
+
+def test_legacy_wrapper_missing_baseline_recovery_is_usable(tmp_path: Path) -> None:
+    """ソースcheckout互換入口では復旧案内も python ai_ratchet_gate.py を示す。"""
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ai_ratchet_gate.py"),
+            "--repo",
+            str(tmp_path),
+            "--baseline",
+            str(tmp_path / "missing.txt"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in completed.stdout
+    assert "ai-ratchet-gate --repo . --update-baseline" not in completed.stdout
 
 
 def test_main_update_baseline_writes_current_state(tmp_path: Path) -> None:
