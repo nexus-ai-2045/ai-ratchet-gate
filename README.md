@@ -36,9 +36,14 @@ python scripts/verify.py
 
 ### 導入の最小手順（Git adapter）
 
-1. 初回に現在の矛盾を baseline として記録する
-2. 以後の commit 前に検査を接続する（具体オプションは `ai-ratchet-gate --help`）
-3. deny 時はエラー文の修復手順に従う（生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` / 意図的例外なら `--update-baseline`）
+```console
+ai-ratchet-gate --repo . --update-baseline
+ai-ratchet-gate --repo .
+```
+
+1. 初回に `ai-ratchet-gate --repo . --update-baseline` で現在の矛盾を baseline（既定: `./.ai-ratchet-gate/baseline.txt`）として記録する
+2. 以後の commit 前に `ai-ratchet-gate --repo .` で検査する
+3. deny 時はエラー文の修復手順に従う（生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` / 意図的例外なら `ai-ratchet-gate --repo . --update-baseline`）
 
 緊急回避は `AI_RATCHET_GATE_SKIP=1`（痕跡が出力に残ります）。AI に導入を依頼する場合は、このリポジトリの URL を渡し「このラチェットゲートを私のリポジトリへ導入して」と頼んでください。生成差分は必ず人間がレビューしてください。
 

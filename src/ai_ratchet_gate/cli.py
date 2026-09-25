@@ -384,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     if not baseline_path.is_file():
         print(
             f"ERROR [ai_ratchet_gate]: baseline がありません: {baseline_path}\n"
-            f"  初期化: python ai_ratchet_gate.py --update-baseline"
+            f"  初期化: ai-ratchet-gate --repo . --update-baseline"
         )
         return 2
 
@@ -415,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
         "  して push や自動化を阻害します。修復:\n"
         "    生成物なら:   git rm --cached <file>   (ignore が効き始める)\n"
         "    実装なら:     .gitignore に `!<path>` を足して allowlist へ\n"
-        "    意図的なら:   python ai_ratchet_gate.py --update-baseline\n"
+        "    意図的なら:   ai-ratchet-gate --repo . --update-baseline\n"
         f"  緊急回避: {SKIP_ENV}=1 git commit ..."
     )
     return 1
