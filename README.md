@@ -1,7 +1,53 @@
 # ai-ratchet-gate
 
-人間が確認した失敗を、agent非依存の実行可能なguardへ変換し、同じ種類の新規悪化を
-fail-closedで止めるratchet型ゲートです。Gitの「trackedなのにignored」は最初の組み込みadapterです。
+**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。PUBLICで [GitHub Release v0.1.1](https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/tag/v0.1.1) あり（v1.0は主張しない）。次の人作業は branch protection 必須化と v1.0 宣言の判断（人間停止線）。
+
+## クイックスタート
+
+必要なのは Python 3.11 以降と git だけです。PyPI には公開しないため、`pip install ai-ratchet-gate` は実行しないでください。
+
+### A. Release wheel（最短）
+
+```console
+python -m pip install \
+  https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl
+ai-ratchet-gate --help
+```
+
+CIや共有環境では URL 直指定ではなく、Release 本文の SHA-256 を固定した requirements で検証付きインストールしてください。
+
+```text
+ai-ratchet-gate @ https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl \
+  --hash=sha256:<Release本文に記載のSHA-256>
+```
+
+```console
+python -m pip install --require-hashes -r requirements.txt
+```
+
+### B. ソース checkout
+
+```console
+git clone https://github.com/nexus-ai-2045/ai-ratchet-gate.git
+cd ai-ratchet-gate
+python -m pip install -e ".[test]"
+python scripts/verify.py
+```
+
+### 導入の最小手順（Git adapter）
+
+```console
+ai-ratchet-gate --repo . --update-baseline
+ai-ratchet-gate --repo .
+```
+
+1. 初回に `ai-ratchet-gate --repo . --update-baseline` で現在の矛盾を baseline（既定: `./.ai-ratchet-gate/baseline.txt`）として記録する
+2. 以後の commit 前に `ai-ratchet-gate --repo .` で検査する
+3. deny 時はエラー文の修復手順に従う（生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` / 意図的例外なら `ai-ratchet-gate --repo . --update-baseline`）
+
+緊急回避は `AI_RATCHET_GATE_SKIP=1`（痕跡が出力に残ります）。AI に導入を依頼する場合は、このリポジトリの URL を渡し「このラチェットゲートを私のリポジトリへ導入して」と頼んでください。生成差分は必ず人間がレビューしてください。
+
+---
 
 ## ratchetは本質的に何を解決するか
 
@@ -116,9 +162,7 @@ flowchart LR
 1. `git add -f` で ignored ファイルを強制追加した
 2. 既に tracked のファイルへ後から ignore ルールを追記した
 
-## 使い方
-
-### 汎用engine（opt-in）
+## 使い方（汎用engine・opt-in）
 
 `observe`が組み込みadapterで対象をread-only観測して`ai-ratchet-gate.observation/v1`のJSONを
 生成し、`evaluate`がそれをレビュー済みの`ai-ratchet-gate.baseline/v1`と比較します。
@@ -166,40 +210,6 @@ enforcement側では`--mode`を渡さない（既定`ratchet`）か`strict`に�
 baselineの拡大、waiverの追加・延長・scope変更、ruleのenforce昇格は自動承認しません。
 `--waiver`は人間がレビューした`ai-ratchet-gate.waivers/v1`を消費するだけで、coreが承認する入口ではありません。
 契約詳細は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照してください。
-
-### AIを使う人
-
-このリポジトリのGitHub URLを、普段使っているAIのチャットへコピー＆ペーストし、
-「このラチェットゲートを私のリポジトリへ導入して」と依頼してください。
-AIには、導入先の現状確認、baselineの作成、commit前の検査への接続、テストまで任せられます。
-生成された変更は、そのまま採用せず、必ず差分を人間がレビューしてください。
-
-### 手動で導入する人
-
-必要なのはPython 3.11以降とgitだけです。Pythonパッケージとしてインストールする方法と、
-ソースcheckoutから直接実行する方法があります。初回に現在の矛盾をbaselineとして記録し、
-以後のcommit前に検査を実行するよう接続してください。具体的なオプションはコマンドの
-ヘルプで確認できます。
-
-GitHub Release版は、release assetを直接指定してインストールします。現在公開済みのv0.1.1は
-`python -m pip install https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl`
-です。PyPIには公開しないため、`pip install ai-ratchet-gate`は実行しないでください。同名を
-第三者が取得した場合、無関係なパッケージをインストールする危険があります。
-
-配布物のSHA-256はRelease preflightのCI logとGitHub Releaseの本文に記録します。CIや共有環境では
-URL直指定ではなく、次のようにhashを固定したrequirementsで検証付きインストールしてください。
-
-```text
-ai-ratchet-gate @ https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.1.1/ai_ratchet_gate-0.1.1-py3-none-any.whl \
-  --hash=sha256:<Release本文に記載のSHA-256>
-```
-
-`python -m pip install --require-hashes -r requirements.txt`で、hash不一致時は停止します。
-
-deny 時のエラー文には修復手順が同梱されます:
-生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` /
-意図的な例外なら `--update-baseline` (diff がレビュー対象になる)。
-緊急回避は `AI_RATCHET_GATE_SKIP=1` (痕跡が出力に残ります)。
 
 ## 設計原則
 

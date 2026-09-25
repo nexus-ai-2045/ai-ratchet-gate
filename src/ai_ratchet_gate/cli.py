@@ -90,6 +90,32 @@ def diff_against_baseline(
     return sorted(current - baseline), sorted(baseline - current)
 
 
+def _update_baseline_recovery_commands() -> list[str]:
+    """baseline 更新の復旧コマンド。argv[0] から入口を推定する。
+
+    インストール済み入口とソースcheckout互換ラッパーのどちらでも復旧できるよう、
+    判定できない場合は両方を返す。
+    """
+    installed = "ai-ratchet-gate --repo . --update-baseline"
+    legacy = "python ai_ratchet_gate.py --repo . --update-baseline"
+    name = Path(sys.argv[0]).name if sys.argv else ""
+    stem = Path(name).stem
+    if name == "ai_ratchet_gate.py" or stem == "ai_ratchet_gate":
+        return [legacy]
+    if stem == "ai-ratchet-gate":
+        return [installed]
+    return [installed, legacy]
+
+
+def _update_baseline_recovery_hint(*, indent: str = "  ", label: str = "初期化") -> str:
+    """利用者向けの baseline 更新復旧案内（日本語）。"""
+    commands = _update_baseline_recovery_commands()
+    lines = [f"{indent}{label}: {commands[0]}"]
+    if len(commands) > 1:
+        lines.append(f"{indent}互換入口: {commands[1]}")
+    return "\n".join(lines)
+
+
 def _exact_keys(value: object, keys: set[str]) -> bool:
     return isinstance(value, dict) and set(value) == keys
 
@@ -384,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
     if not baseline_path.is_file():
         print(
             f"ERROR [ai_ratchet_gate]: baseline がありません: {baseline_path}\n"
-            f"  初期化: python ai_ratchet_gate.py --update-baseline"
+            f"{_update_baseline_recovery_hint()}"
         )
         return 2
 
@@ -415,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         "  して push や自動化を阻害します。修復:\n"
         "    生成物なら:   git rm --cached <file>   (ignore が効き始める)\n"
         "    実装なら:     .gitignore に `!<path>` を足して allowlist へ\n"
-        "    意図的なら:   python ai_ratchet_gate.py --update-baseline\n"
+        f"{_update_baseline_recovery_hint(indent='    ', label='意図的なら')}\n"
         f"  緊急回避: {SKIP_ENV}=1 git commit ..."
     )
     return 1
