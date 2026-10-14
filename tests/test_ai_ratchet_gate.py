@@ -132,6 +132,13 @@ def test_list_tracked_ignored_handles_non_ascii_paths(tmp_path: Path) -> None:
 def test_legacy_scan_preserves_git_path_unicode_form(tmp_path: Path) -> None:
     """legacy baseline用のpathはGitが返したUnicode形式を変えない。"""
     _init_repo(tmp_path)
+    # macOSでもGit indexへNFDを保存し、製品側の正規化を検出する。
+    subprocess.run(
+        ["git", "config", "core.precomposeunicode", "false"],
+        cwd=tmp_path,
+        env=_git_env(),
+        check=True,
+    )
     nfd_path = "cafe\u0301.log"
     (tmp_path / nfd_path).write_text("v1", encoding="utf-8")
     (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
