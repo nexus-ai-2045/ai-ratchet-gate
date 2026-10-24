@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-ratchet-gate"
+version = "0.1.0"
+description = "trackedかつignoredなGit矛盾の新規増加を止めるラチェット型ゲート"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "nexus-ai-2045"}]
+keywords = ["git", "gitignore", "ratchet", "pre-commit", "ai-agent"]
+classifiers = [
+  "Private :: Do Not Upload",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/nexus-ai-2045/ai-ratchet-gate#readme"
+Issues = "https://github.com/nexus-ai-2045/ai-ratchet-gate/issues"
+Source = "https://github.com/nexus-ai-2045/ai-ratchet-gate"
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+release = ["build>=1.2,<2", "packaging>=24,<27", "wheel>=0.45,<1"]
+
+[project.scripts]
+ai-ratchet-gate = "ai_ratchet_gate.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

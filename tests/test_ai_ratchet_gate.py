@@ -1,0 +1,405 @@
+"""ai_ratchet_gate.py のテスト。
+
+「tracked なのに gitignore にマッチする」矛盾の増分を commit 時に止めるゲート。
+既存分は baseline として grandfather し、新規だけ deny する。
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from ai_ratchet_gate import (  # noqa: E402
+    diff_against_baseline,
+    format_baseline,
+    list_tracked_ignored,
+    main,
+    parse_baseline,
+)
+
+
+def test_package_exposes_version() -> None:
+    import ai_ratchet_gate
+
+    assert ai_ratchet_gate.__version__ == "0.1.1"
+
+
+def test_legacy_script_ignores_unrelated_src_package(tmp_path: Path) -> None:
+    unrelated_src = tmp_path / "src"
+    unrelated_src.mkdir()
+    (unrelated_src / "__init__.py").write_text("", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(tmp_path)
+    env["PYTHONUTF8"] = "1"
+
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "ai_ratchet_gate.py"), "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "tracked∧ignored" in completed.stdout
+
+
+def _git_env() -> dict[str, str]:
+    """親プロセスの GIT_* を持ち込まない (GIT_DIR 継承で実 repo を壊す事故の自衛)。"""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    return env
+
+
+def _init_repo(root: Path) -> None:
+    env = _git_env()
+    subprocess.run(["git", "init", "-q"], cwd=root, env=env, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@example.invalid"],
+        cwd=root, env=env, check=True,
+    )
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, env=env, check=True)
+
+
+def _commit_all(root: Path, message: str = "c") -> None:
+    env = _git_env()
+    subprocess.run(["git", "add", "-A", "-f"], cwd=root, env=env, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", message, "--no-verify"],
+        cwd=root, env=env, check=True,
+    )
+
+
+# --- 純関数 ---------------------------------------------------------------
+
+
+def test_parse_baseline_skips_comments_and_blanks(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("# header\n\na.log\nb/c.log\n", encoding="utf-8")
+
+    assert parse_baseline(baseline) == {"a.log", "b/c.log"}
+
+
+def test_diff_reports_only_new_entries() -> None:
+    new, resolved = diff_against_baseline(
+        current={"a.log", "new.log"}, baseline={"a.log", "gone.log"}
+    )
+
+    assert new == ["new.log"]
+    assert resolved == ["gone.log"]
+
+
+def test_format_baseline_is_sorted_and_stable() -> None:
+    text = format_baseline({"b.log", "a.log"})
+
+    lines = [l for l in text.splitlines() if l and not l.startswith("#")]
+    assert lines == ["a.log", "b.log"]
+    assert text == format_baseline({"a.log", "b.log"})  # 順序非依存で同一出力
+
+
+# --- git 統合 (tmp repo) ---------------------------------------------------
+
+
+def test_list_tracked_ignored_detects_late_ignore_pattern(tmp_path: Path) -> None:
+    """先に commit → 後から ignore、の順で矛盾が生まれる (本ゲートの起源事故の型)。"""
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    assert list_tracked_ignored(tmp_path) == {"out.log"}
+
+
+def test_list_tracked_ignored_handles_non_ascii_paths(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "計測ログ.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    assert list_tracked_ignored(tmp_path) == {"計測ログ.log"}
+
+
+def test_legacy_scan_preserves_git_path_unicode_form(tmp_path: Path) -> None:
+    """legacy baseline用のpathはGitが返したUnicode形式を変えない。"""
+    _init_repo(tmp_path)
+    # macOSでもGit indexへNFDを保存し、製品側の正規化を検出する。
+    subprocess.run(
+        ["git", "config", "core.precomposeunicode", "false"],
+        cwd=tmp_path,
+        env=_git_env(),
+        check=True,
+    )
+    nfd_path = "cafe\u0301.log"
+    (tmp_path / nfd_path).write_text("v1", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    assert list_tracked_ignored(tmp_path) == {nfd_path}
+
+
+def test_legacy_scan_preserves_exclude_standard_semantics(tmp_path: Path) -> None:
+    """legacy入口は既存互換としてclone-local excludeも観測する。"""
+    _init_repo(tmp_path)
+    (tmp_path / "local-only.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    info_exclude = tmp_path / ".git" / "info" / "exclude"
+    info_exclude.write_text("*.log\n", encoding="utf-8")
+
+    assert list_tracked_ignored(tmp_path) == {"local-only.log"}
+
+
+def test_legacy_scan_preserves_global_excludes_semantics(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "global-only.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    excludes = tmp_path / "global-excludes"
+    excludes.write_text("*.log\n", encoding="utf-8")
+    global_config = tmp_path / "global.gitconfig"
+    subprocess.run(
+        ["git", "config", "--file", str(global_config), "core.excludesFile", str(excludes)],
+        check=True,
+        env=_git_env(),
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+
+    assert list_tracked_ignored(tmp_path) == {"global-only.log"}
+
+
+def test_main_allows_when_no_new_inconsistency(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline(set()), encoding="utf-8")
+
+    assert main(["--repo", str(tmp_path), "--baseline", str(baseline)]) == 0
+
+
+def test_main_blocks_new_inconsistency(tmp_path: Path, capsys) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline(set()), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "out.log" in out
+    assert "rm --cached" in out  # 修復手順を案内する
+
+
+def test_main_allows_grandfathered_entries(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline({"out.log"}), encoding="utf-8")
+
+    assert main(["--repo", str(tmp_path), "--baseline", str(baseline)]) == 0
+
+
+def test_main_fails_closed_without_baseline(tmp_path: Path, capsys) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    code = main(
+        ["--repo", str(tmp_path), "--baseline", str(tmp_path / "missing.txt")]
+    )
+
+    # 観測不能 / 前提欠落は違反 (1) と区別して 2 (tool_error 相当)
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "baseline" in out
+    # pytest 経由など入口不明時は、インストール済みと互換ラッパーの両方を案内する
+    assert "ai-ratchet-gate --repo . --update-baseline" in out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in out
+    assert "互換入口" in out
+
+
+def test_missing_baseline_recovery_hint_follows_argv0(tmp_path: Path, capsys, monkeypatch) -> None:
+    """argv[0] から入口を推定し、使える復旧コマンドだけを出す。"""
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    missing = tmp_path / "missing.txt"
+
+    monkeypatch.setattr(sys, "argv", ["ai_ratchet_gate.py"])
+    assert main(["--repo", str(tmp_path), "--baseline", str(missing)]) == 2
+    legacy_out = capsys.readouterr().out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in legacy_out
+    assert "ai-ratchet-gate --repo . --update-baseline" not in legacy_out
+
+    monkeypatch.setattr(sys, "argv", ["ai-ratchet-gate"])
+    assert main(["--repo", str(tmp_path), "--baseline", str(missing)]) == 2
+    installed_out = capsys.readouterr().out
+    assert "ai-ratchet-gate --repo . --update-baseline" in installed_out
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" not in installed_out
+
+
+def test_legacy_wrapper_missing_baseline_recovery_is_usable(tmp_path: Path) -> None:
+    """ソースcheckout互換入口では復旧案内も python ai_ratchet_gate.py を示す。"""
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ai_ratchet_gate.py"),
+            "--repo",
+            str(tmp_path),
+            "--baseline",
+            str(tmp_path / "missing.txt"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "python ai_ratchet_gate.py --repo . --update-baseline" in completed.stdout
+    assert "ai-ratchet-gate --repo . --update-baseline" not in completed.stdout
+
+
+def test_main_update_baseline_writes_current_state(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+
+    code = main(
+        ["--repo", str(tmp_path), "--baseline", str(baseline), "--update-baseline"]
+    )
+
+    assert code == 0
+    assert parse_baseline(baseline) == {"out.log"}
+    # 直後の通常実行は通る
+    assert main(["--repo", str(tmp_path), "--baseline", str(baseline)]) == 0
+
+
+def test_main_default_baseline_lives_inside_repo(tmp_path: Path) -> None:
+    """--baseline 省略時は <repo>/.ai-ratchet-gate/baseline.txt を使う。"""
+    _init_repo(tmp_path)
+    (tmp_path / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _commit_all(tmp_path)
+
+    code = main(["--repo", str(tmp_path), "--update-baseline"])
+
+    assert code == 0
+    assert (tmp_path / ".ai-ratchet-gate" / "baseline.txt").is_file()
+    assert main(["--repo", str(tmp_path)]) == 0
+
+
+def test_main_skip_env_bypasses_with_notice(tmp_path: Path, capsys, monkeypatch) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline(set()), encoding="utf-8")
+    monkeypatch.setenv("AI_RATCHET_GATE_SKIP", "1")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    assert code == 0
+    assert "SKIP" in capsys.readouterr().out
+
+
+# --- adapter 経由の legacy 列挙 (fail-closed) --------------------------------
+
+
+def test_list_tracked_ignored_rejects_undecodable_path(monkeypatch) -> None:
+    """非 UTF-8 パスを U+FFFD に潰して同一視しない (fail-closed)。"""
+    import pytest
+
+    from ai_ratchet_gate.adapters import tracked_ignored
+    from ai_ratchet_gate.model import RatchetError
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout=b"\xff.log\0", stderr=b"")
+
+    monkeypatch.setattr(tracked_ignored.subprocess, "run", fake_run)
+
+    with pytest.raises(RatchetError):
+        list_tracked_ignored(Path("."))
+
+
+def test_main_git_failure_exits_2_not_1(tmp_path: Path, capsys) -> None:
+    """git repo でない場所 = 観測不能。deny (1) と区別して 2 を返す。"""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline(set()), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    assert code == 2
+    assert "ERROR" in capsys.readouterr().out
+
+
+# --- ratchet 可視化 (deny/allow を人間に明示する) ----------------------------
+
+
+def test_main_deny_banner_shows_ratchet_engaged(tmp_path: Path, capsys) -> None:
+    """deny 時、ratchet が効いたこと・grandfather 分は通過中なことを 1 行目で明示。"""
+    _init_repo(tmp_path)
+    (tmp_path / "old.log").write_text("v1", encoding="utf-8")
+    (tmp_path / "new.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline({"old.log"}), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "RATCHET DENY" in out
+    assert "新規悪化 1 件を阻止" in out
+    assert "grandfather 済み 1 件は通過中" in out
+
+
+def test_main_allow_banner_shows_ratchet_alive(tmp_path: Path, capsys) -> None:
+    """allow 時も、監視が生きていること (baseline 件数) を毎回表示する。"""
+    _init_repo(tmp_path)
+    (tmp_path / "out.log").write_text("v1", encoding="utf-8")
+    _commit_all(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(format_baseline({"out.log", "resolved.log"}), encoding="utf-8")
+
+    code = main(["--repo", str(tmp_path), "--baseline", str(baseline)])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "RATCHET OK" in out
+    assert "baseline 1 件を監視中" in out
+    assert "解消済み 1 件は縮小可能" in out

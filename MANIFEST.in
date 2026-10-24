@@ -1,0 +1,16 @@
+include CHANGELOG.md
+include CONTRIBUTING.md
+include OPERATIONS.md
+include PREFLIGHT.md
+include ROADMAP.md
+include SECURITY.md
+include ai_ratchet_gate.py
+recursive-include .ai-ratchet-gate *.txt
+recursive-include .ai-ratchet-gate/baselines *.json
+recursive-include docs *.md
+include .pre-commit-hooks.yaml
+exclude docs/adr/ADR-0002-review-knowledge-propagation.md
+exclude docs/adr/ADR-0003-solution-knowledge-propagation.md
+exclude docs/adr/ADR-0006-fact-output-enforcement.md
+exclude docs/adr/ADR-0007-solution-harness-loop.md
+recursive-include scripts *.py

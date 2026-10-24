@@ -1,0 +1,8 @@
+{
+  "schema": "ai-ratchet-gate.baseline/v1",
+  "adapter_id": "git.tracked_ignored",
+  "adapter_version": "1",
+  "subject": "repo:nexus-ai-2045/ai-ratchet-gate@ENFORCEMENT_BINDS_SUBJECT",
+  "policy": "new_only",
+  "finding_ids": []
+}

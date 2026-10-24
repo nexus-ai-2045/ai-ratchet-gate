@@ -1,0 +1,15 @@
+# Architecture Decision Records
+
+このディレクトリは、AI Ratchet Gateの公開された設計判断の正本です。ADRの識別子は
+`nexus-ai-2045/ai-ratchet-gate + ADR番号`で一意に扱います。
+
+| ADR | 状態 | 概要 |
+|---|---|---|
+| [ADR-0001](../../../../../../docs/adr/ADR-0001-generic-ratchet-engine.md) | accepted | 汎用ラチェットengineとadapter境界 |
+| [ADR-0002](../../../../../../docs/adr/ADR-0002-review-knowledge-propagation.md) | proposed | PRレビュー知見の昇格と横断伝播 |
+| [ADR-0003](../../../../../../docs/adr/ADR-0003-solution-knowledge-propagation.md) | proposed | 解決知識の中央/ローカル伝播 |
+| [ADR-0004](../../../../../../docs/adr/ADR-0004-skill-provenance-adapter.md) | accepted | skills provenance / permission expansion adapter |
+| [ADR-0005](../../../../../../docs/adr/ADR-0005-test-disable-adapter.md) | accepted | テスト無効化（skip / only / hollow）adapter |
+| [ADR-0006](../../../../../../docs/adr/ADR-0006-fact-output-enforcement.md) | proposed | structured fact-output enforcement（read-only CLI。runtime は not_enforced） |
+| [ADR-0007](../../../../../../docs/adr/ADR-0007-solution-harness-loop.md) | proposed | 解決知識の適用・再検証Harness境界 |
+| [ADR-0008](ADR-0008-operation-evidence-contracts.md) | proposed | 外部操作receipt・target scope・残務分類の汎用証拠契約 |

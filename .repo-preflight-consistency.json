@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nexus-ai-2045/repo-preflight/main/schemas/repository-consistency.schema.json",
+  "schema": "repo-preflight.consistency/v1",
+  "mode": "shadow",
+  "ratchet": {"baseline": []},
+  "markdown": {
+    "include": [
+      "README.md",
+      "SECURITY.md",
+      "CONTRIBUTING.md",
+      "PREFLIGHT.md",
+      "CHANGELOG.md",
+      "OPERATIONS.md",
+      "docs/architecture.md",
+      "docs/threat-model.md",
+      "docs/release.md"
+    ]
+  },
+  "readme_contracts": {
+    "required_paths": ["ai_ratchet_gate.py", "pyproject.toml", "src/ai_ratchet_gate/cli.py"]
+  },
+  "impact_map": [
+    {
+      "change": ["ai_ratchet_gate.py", "src/ai_ratchet_gate/**", "pyproject.toml", "scripts/verify.py"],
+      "requires_any": ["tests/**"]
+    },
+    {
+      "change": [".github/**", ".repo-preflight-consistency.json", ".pre-commit-hooks.yaml"],
+      "requires_any": ["tests/**", "README.md", "PREFLIGHT.md", "OPERATIONS.md"]
+    },
+    {
+      "change": ["scripts/enforce_observe_evaluate.py", ".ai-ratchet-gate/baselines/**"],
+      "requires_any": ["tests/**", "OPERATIONS.md"]
+    }
+  ],
+  "generated_artifacts": []
+}
