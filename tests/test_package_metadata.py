@@ -25,7 +25,7 @@ def test_publication_metadata_matches_the_approved_identity() -> None:
     ]
 
     assert project["name"] == "ai-ratchet-gate"
-    assert project["version"] == "0.1.1"
+    assert project["version"] == "0.2.0"
     assert project["license"] == "MIT"
     assert "Private :: Do Not Upload" in project["classifiers"]
     assert project["authors"] == [{"name": "nexus-ai-2045"}]

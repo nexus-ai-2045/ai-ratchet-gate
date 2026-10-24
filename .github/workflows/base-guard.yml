@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     env:
       PYTHONUTF8: "1"
-      PREFLIGHT_REF: 44fdece1634d4afb355639ad465375dca5e5c868 # PIN_TBD
+      PREFLIGHT_REF: 5b7c774deb8e9abcf0fce0c5f39ec1c1f3a894f3 # v0.10.0
     steps:
       - name: Require pinned repo-preflight SHA
         run: '[[ "$PREFLIGHT_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "PREFLIGHT_REF には 40桁の commit SHA を書いてください" >&2; exit 1; }'

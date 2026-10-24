@@ -1,33 +1,32 @@
 # ai-ratchet-gate
 
-**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。現在のrepositoryはprivateの再構築先で、tag / GitHub Releaseは未配置です（v1.0は主張しない）。移行前v0.1.1の保全wheelと現在のsourceを区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
+**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。現在のrepositoryはpublicの再構築先で、配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
 
 ## クイックスタート
 
 必要なのは Python 3.11 以降と git だけです。PyPI には公開しないため、`pip install ai-ratchet-gate` は実行しないでください。
 
-### A. レビュー済みの保全wheel（consumer側）
+### A. GitHub Release wheel（consumer側）
 
-現在のrepositoryにはRelease downloadを配置していません。既存consumerは、移行前v0.1.1
-releaseから保全した`ai_ratchet_gate-0.1.1-py3-none-any.whl`を、そのconsumerの`vendor/`へ
-同一bytesで同梱し、LICENSEと出典を保持して利用します。現在のsourceから再ビルドしたwheel
-とは区別してください。
+`v0.2.0` のGitHub Releaseに添付した `ai_ratchet_gate-0.2.0-py3-none-any.whl` を、URLとSHA-256の
+両方で固定して入れます。SHA-256の値はReleaseの本文に載せています（wheelにはこのREADMEが
+含まれるため、README自身にはhashを書きません）。
 
-consumerのrepository直下に次の`requirements-tools.txt`を置きます。
+consumerのrepository直下に次の`requirements-tools.txt`を置き、`<SHA-256>` をRelease本文の値に
+置き換えます。
 
 ```text
-./vendor/ai_ratchet_gate-0.1.1-py3-none-any.whl \
-  --hash=sha256:b3f22ab772699d57906326e42189e0ab7a0ee9e33dcad55a90909ece35106cd7
+ai-ratchet-gate @ https://github.com/nexus-ai-2045/ai-ratchet-gate/releases/download/v0.2.0/ai_ratchet_gate-0.2.0-py3-none-any.whl \
+  --hash=sha256:<SHA-256>
 ```
 
 ```console
-python -m pip install --no-index --require-hashes -r requirements-tools.txt
+python -m pip install --require-hashes -r requirements-tools.txt
 ai-ratchet-gate --help
 ```
 
-保全wheelは10,108 bytesです。hash不一致は停止し、wheel・LICENSE・出典・hashの更新は
-レビュー済みの変更として行います。これは別private repositoryのcredentialや新しいReleaseを
-必要としない方式であり、Python本体や全テスト依存をオフライン提供するものではありません。
+hash不一致は停止します。wheel・hashの更新はレビュー済みの変更として行います。
+移行前v0.1.1のwheel（10,108 bytes）とは中身が別物なので、0.1.1の固定値を使い回さないでください。
 
 ### B. ソース checkout
 
@@ -268,7 +267,6 @@ Repo Preflightの成功は、push、merge、公開の承認ではありません
 
 ## Repository visibility
 
-このrepositoryはprivateです。ソフトウェアにはMIT Licenseを採用しています。現在の再構築先には
-tag / GitHub Releaseを配置していません。移行前v0.1.1の保全wheelを使うconsumerは、
-同一bytes・固定hash・LICENSE・出典を保持します。PyPIへは送信しません。
+このrepositoryはpublicです。ソフトウェアにはMIT Licenseを採用しています。再構築先の配布物は
+GitHub Release `v0.2.0` からです。PyPIへは送信しません。
 公開範囲変更、tag、GitHub Release作成、将来の公開物はそれぞれ人間レビューを経ます。

@@ -38,7 +38,7 @@ globals().update(
 build_receipt = _RECEIPT.build_receipt
 evaluate = _ENGINE.evaluate
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 
 if __name__ == "__main__":
