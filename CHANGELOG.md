@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-24
+
+再構築後のrepositoryから作る最初のRelease。0.1.1（移行前・10,108 bytes）とは中身が別物のため、
+同じ版名を再利用せずminorを上げた。
+
 ### 追加
 
 - 解決知識Harness（[ADR-0007](docs/adr/ADR-0007-solution-harness-loop.md)）:
