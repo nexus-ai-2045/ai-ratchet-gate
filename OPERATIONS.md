@@ -12,7 +12,7 @@ core契約は[ADR-0001](docs/adr/ADR-0001-generic-ratchet-engine.md)を参照し
 | 入口 | 呼び方 | 備考 |
 |---|---|---|
 | ローカルrunner | `python scripts/enforce_observe_evaluate.py --adapter … --baseline …`（任意 `--waiver`） | 本repo同梱の運用接続。既存CLIだけをsubprocessで呼ぶ |
-| CI | `.github/workflows/ci.yml` の Enforce observe→evaluate ステップ | 上記スクリプトを3 built-in adapterへ適用 |
+| CI | `.github/workflows/ci.yml` の Enforce observe→evaluate ステップ | 上記スクリプトを3 built-in adapterへ適用。`pull_request` と `main` への `push` で走る（全枝の `push` は PR と二重になるため外した） |
 | pre-commit | `.pre-commit-hooks.yaml` の legacy `ai-ratchet-gate`、または下記レシピ | 汎用判定は公開APIを増やさず observe/evaluate を直接呼ぶ |
 
 `scripts/enforce_observe_evaluate.py` はレビュー済み baseline seed（`finding_ids`）へ、
