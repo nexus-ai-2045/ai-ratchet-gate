@@ -543,3 +543,14 @@ def test_release_artifacts_report_missing_sdist_license(tmp_path: Path) -> None:
     write_sdist(sdist, omit="LICENSE")
 
     assert CHECK.main(["--dist-dir", str(tmp_path)]) == 1
+
+
+def test_operation_contracts_module_is_required_in_wheel() -> None:
+    import pytest
+
+    required = "ai_ratchet_gate/operation_contracts.py"
+    with pytest.raises(ValueError, match="必須ファイル"):
+        CHECK.require_exact_names(
+            set(CHECK.REQUIRED_WHEEL_SUFFIXES) - {required},
+            CHECK.REQUIRED_WHEEL_SUFFIXES,
+        )

@@ -12,8 +12,20 @@ _CLI = importlib.import_module("ai_ratchet_gate.cli")
 _MODEL = importlib.import_module("ai_ratchet_gate.model")
 _ENGINE = importlib.import_module("ai_ratchet_gate.engine")
 _RECEIPT = importlib.import_module("ai_ratchet_gate.receipt")
+_OPERATION_CONTRACTS = importlib.import_module("ai_ratchet_gate.operation_contracts")
+
+_OPERATION_EXPORTS = (
+    "ResidualItem",
+    "build_operation_receipt",
+    "classify_residuals",
+    "verify_operation_receipt",
+    "verify_residual_report",
+    "verify_scope_binding",
+    "verify_scope_binding_receipt",
+)
 
 __all__ = [
+    *_OPERATION_EXPORTS,
     "BASELINE_HEADER",
     "DEFAULT_BASELINE",
     "SKIP_ENV",
@@ -37,8 +49,9 @@ globals().update(
 )
 build_receipt = _RECEIPT.build_receipt
 evaluate = _ENGINE.evaluate
+globals().update({name: getattr(_OPERATION_CONTRACTS, name) for name in _OPERATION_EXPORTS})
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 if __name__ == "__main__":

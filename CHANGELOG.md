@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-26
+
+### 追加
+
+- 独立したopt-in Python API `operation_contracts`（[ADR-0008](docs/adr/ADR-0008-operation-evidence-contracts.md)）。
+  操作終了とreadbackの証拠整合、明示rootへのpath束縛、分類済み残務の判定と保存JSONの再検証を提供する
+- packageとソースcheckoutの公開export、非UTF-8入力・改ざん・件数上限・scope逸脱の回帰試験
+
+### 互換性
+
+- 公開API追加としてminorを0.3.0へ更新。既存CLI・adapterの既定動作は維持する
+- hashの整合は真正性・承認・完全列挙を証明しない。操作実行や外部送信、Harnessへの自動接続は行わない
+
 ## [0.2.0] - 2026-10-24
 
 再構築後のrepositoryから作る最初のRelease。0.1.1（移行前・10,108 bytes）とは中身が別物のため、

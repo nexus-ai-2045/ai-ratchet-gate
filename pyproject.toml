@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-ratchet-gate"
-version = "0.2.0"
+version = "0.3.0"
 description = "人間確認済みの失敗をagent非依存の実行可能な非回帰guardへ変えるゲート"
 readme = "README.md"
 requires-python = ">=3.11"

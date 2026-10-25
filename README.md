@@ -2,6 +2,8 @@
 
 **現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。現在のrepositoryはpublicの再構築先で、配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
 
+作業中のsourceは次期版 `0.3.0` です。以下の配布案内は現在の公開版 `v0.2.0` を指します。
+
 ## クイックスタート
 
 必要なのは Python 3.11 以降と git だけです。PyPI には公開しないため、`pip install ai-ratchet-gate` は実行しないでください。
@@ -270,3 +272,13 @@ Repo Preflightの成功は、push、merge、公開の承認ではありません
 このrepositoryはpublicです。ソフトウェアにはMIT Licenseを採用しています。再構築先の配布物は
 GitHub Release `v0.2.0` からです。PyPIへは送信しません。
 公開範囲変更、tag、GitHub Release作成、将来の公開物はそれぞれ人間レビューを経ます。
+
+## 外部操作・対象範囲・残務の証拠契約
+
+`ai_ratchet_gate.operation_contracts`は独立したopt-in Python APIです。package直下とソースcheckoutからも次をimportできます。
+
+- `build_operation_receipt` / `verify_operation_receipt`: 操作終了と別証拠のreadbackを照合し、`OperationReceipt`を返す
+- `verify_scope_binding` / `verify_scope_binding_receipt`: 明示rootへのpath束縛と期待件数を検証し、`ScopeBindingReceipt`を返す
+- `ResidualItem` / `classify_residuals` / `verify_residual_report`: 分類済み残務から`ResidualReport`を作成・再検証する
+
+保存JSONは各`verify_*`でexact schema・自己hash・意味条件を再検証します。hashの整合は真正性・承認・完全列挙を証明せず、path列挙とWIP分類の信頼性は呼出元の責務です。UTF-8で表現できないpath・receipt文字列は`RatchetError`で拒否します。scope receiptは絶対pathを含むため公開ログへ出しません。既存CLI・adapterの既定動作は維持し、このAPI自体は操作や外部送信を実行しません。判定条件と制約は[ADR-0008](docs/adr/ADR-0008-operation-evidence-contracts.md)を参照してください。
