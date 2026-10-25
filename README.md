@@ -1,6 +1,8 @@
 # ai-ratchet-gate
 
-**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。現在のrepositoryはpublicの再構築先で、配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
+**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。
+
+現在のrepositoryはpublicの再構築先です。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
 
 ## クイックスタート
 
