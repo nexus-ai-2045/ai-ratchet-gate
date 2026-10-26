@@ -623,3 +623,101 @@ def test_unknown_owner_type_is_unknown_and_stops(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(collector, "_gh_lines", run)
     with pytest.raises(collector.FactsError):
         collector.registered_secret_names_from_gh("o/r")
+
+
+def test_workflow_call_text_inside_block_scalar_is_not_exempt() -> None:
+    # run: | の heredoc の中の workflow_call: は宣言ではないので、除外に使わない
+    text = (
+        "on: push\n"
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          cat <<'YAML' > called.yml\n"
+        "          on:\n"
+        "            workflow_call:\n"
+        "              secrets:\n"
+        "                MISSING:\n"
+        "                  required: true\n"
+        "          YAML\n"
+        "          echo ${{ secrets.MISSING }}\n"
+    )
+    assert extract_secret_names(text) == ("MISSING",)
+
+
+def test_workflow_call_not_under_top_level_on_is_not_exempt() -> None:
+    nested = (
+        "jobs:\n"
+        "  on:\n"
+        "    workflow_call:\n"
+        "      secrets:\n"
+        "        MISSING: {}\n"
+        "x: ${{ secrets.MISSING }}\n"
+    )
+    assert extract_secret_names(nested) == ("MISSING",)
+    deeper = (
+        "on:\n"
+        "  push:\n"
+        "    workflow_call:\n"
+        "      secrets:\n"
+        "        MISSING: {}\n"
+        "x: ${{ secrets.MISSING }}\n"
+    )
+    assert extract_secret_names(deeper) == ("MISSING",)
+    in_quote = (
+        'on: "\n'
+        "  workflow_call:\n"
+        "    secrets:\n"
+        '      MISSING: {}"\n'
+        "x: ${{ secrets.MISSING }}\n"
+    )
+    assert extract_secret_names(in_quote) == ("MISSING",)
+
+
+def test_multiline_quoted_scalar_keeps_hash_lines() -> None:
+    # 行をまたぐ引用の中の # は注釈ではなく、GitHub が ${{ }} を展開する
+    text = (
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        '      - run: "echo start\n'
+        '          # ${{ secrets.IN_DOUBLE }} \\" still\n'
+        '          end"\n'
+        "      - run: 'echo it''s\n"
+        "          # ${{ secrets.IN_SINGLE }}'\n"
+        "      # ${{ secrets.AFTER_CLOSE }}\n"
+        "      - run: echo it's # ${{ secrets.PLAIN_TAIL }}\n"
+        "      - env:\n"
+        "          A: ${{ secrets.ACTIVE }}\n"
+    )
+    assert extract_secret_names(text) == ("IN_DOUBLE", "IN_SINGLE", "ACTIVE")
+
+
+def test_only_secret_references_inside_expressions_are_counted() -> None:
+    text = (
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: echo 'secrets.LITERAL' secrets['ALSO_LITERAL']\n"
+        "      - run: echo ${{ format('{0}}', secrets.IN_FORMAT) }}\n"
+        "      - run: |\n"
+        "          echo ${{\n"
+        "            secrets.MULTI_LINE }}\n"
+        "      - run: echo ${{ secrets['INDEXED'] }}\n"
+    )
+    assert extract_secret_names(text) == ("IN_FORMAT", "MULTI_LINE", "INDEXED")
+
+
+def test_unterminated_expression_keeps_counting() -> None:
+    # 閉じていない ${{ は最後まで式とみなす（数える側に倒す）
+    assert extract_secret_names("x: ${{ secrets.OPEN\n") == ("OPEN",)
+
+
+def test_literal_secret_text_does_not_block_ci_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    collector = _load_collector()
+    monkeypatch.setattr(collector, "tagged_shas", lambda repos: [])
+    _workflow(tmp_path, "a.yml", "run: echo 'secrets.EXAMPLE'\n")
+    facts = collector.collect(tmp_path, tag_repos=(), secrets_repo=None)
+    assert facts["registered_secret_names"] == []
