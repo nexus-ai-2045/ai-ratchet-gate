@@ -19,6 +19,11 @@ python ai_ratchet_gate.py --repo .
 Python自身にtest依存があることを先に検査し、別のPython環境を誤って使った場合は修復コマンドを
 表示して停止します。
 
+途中の作業（commit・pushの前など）では `python scripts/verify.py --changed` で、`origin/main`
+からの差分に関係するテストだけを回せます。画面には要約だけを出し、全文は `.git/verify/` のログへ
+落とします。関係するテストが決まらない変更は全部のテストに戻します。PRを出す前とマージ前は、
+引数なしの全部の検証を回します。
+
 5. repo-preflightでsecret候補、個人path、必須文書、差分整合性を検査する。
 6. 汎用判定をlocalで再現する場合は次も実行できる（CIと同じ判定経路）。
 

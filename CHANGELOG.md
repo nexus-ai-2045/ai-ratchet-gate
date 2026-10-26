@@ -6,6 +6,8 @@
 
 ### 追加
 
+- `scripts/verify.py --changed [BASE]`。途中の作業用に、差分に関係するテストだけを回して要約を出し、
+  全文は `.git/verify/` のログへ落とす。決まらない変更は全部のテストに戻す。既定（引数なし）とCIは今までどおり全部
 - `ci.pin_tagged` / `ci.release_asset_live` / `ci.secret_declared` adapter（[ADR-0009](docs/adr/ADR-0009-ci-facts-adapters.md)）。
   タグに無い commit pin、死んだ Release 配布URL、未登録 secret 名を、`ai-ratchet-gate.ci-facts/v1`
   と突き合わせて観測する。facts が無い場合は fail-closed
