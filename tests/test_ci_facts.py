@@ -796,6 +796,27 @@ def test_double_quoted_yaml_escapes_are_decoded_before_matching() -> None:
     assert extract_secret_names(text) == ("HEX", "UNICODE", "JOINED", "ABC")
 
 
+def test_single_quoted_doubled_apostrophes_are_decoded_before_matching() -> None:
+    # YAML の一重引用の `''` は `'` にほどけるので、添字の文字列として読めて止めない
+    text = (
+        "a: '${{ secrets[''PRESENT_NAME''] }}'\n"
+        "b: 'x ${{ secrets[''OTHER''] }} y'\n"
+        "c: '${{ format(''{0}'', ''secrets.NOT_A_REF'') }}'\n"
+    )
+    assert extract_secret_names(text) == ("PRESENT_NAME", "OTHER")
+    # flow の中の一重引用もほどく。素の文字列の `f(a, 'b''c')` は YAML の引用ではないので `''` のまま
+    flow_text = (
+        "env: {A: '${{ secrets[''FLOW''] }}', B: x}\n"
+        "list: [\n"
+        "  '${{ secrets[''NEXT_LINE''] }}',\n"
+        "]\n"
+        "plain: ${{ contains(github.ref, 'it''s secrets[x]') }}\n"
+    )
+    assert extract_secret_names(flow_text) == ("FLOW", "NEXT_LINE")
+    # ほどいた後に空の添字になるものは、これまでどおり止める
+    with pytest.raises(RatchetError, match="ci_secret_reference_unresolved"):
+        extract_secret_names("a: '${{ secrets[''''] }}'\n")
+
 def test_missing_repo_root_is_observation_error(tmp_path: Path) -> None:
     # 取り出し失敗や path の打ち間違いを「CI file の無い repo」とみなさない
     facts = CiFacts(
