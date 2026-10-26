@@ -31,6 +31,7 @@ adapter の中でネットワークに出ると結果が再現できなくなる
   - `ci.secret_declared`（rule `secret_not_registered`）: 参照 secret 名が facts の登録名に無い。
     `GITHUB_TOKEN` と `on.workflow_call.secrets` で呼び出し側から渡される名前は対象外。subject は `secret:NAME`。
     数えるのは `${{ ... }}` の式の中の `secrets.NAME` と `secrets['NAME']` だけで、式の中の文字列は数えない。
+    二重引用の YAML escape はほどいてから探す。repo の根が無いときは空の repo とみなさず観測エラーにする。
     文脈名は大文字小文字を区別せずに読み（GitHub の式と同じ）、`.` の後ろの `secrets` は属性として数えない。
     名前が決まらない読み方（`secrets[matrix.x]`・`toJSON(secrets)` など）は観測エラーで止める（fail-closed）。YAML の注釈の中の参照は数えない（ブロック文字列と行をまたぐ引用の中身は
     GitHub が展開するので数える）。除外は一番上の `on.workflow_call.secrets` だけから取り、ブロック形式・フロー形式・
