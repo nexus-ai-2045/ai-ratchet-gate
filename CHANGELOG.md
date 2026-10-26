@@ -10,7 +10,8 @@
   タグに無い commit pin、死んだ Release 配布URL、未登録 secret 名を、`ai-ratchet-gate.ci-facts/v1`
   と突き合わせて観測する。facts が無い場合は fail-closed
 - `observe --facts` と `scripts/enforce_observe_evaluate.py --facts`（ci.* 専用。既存 adapter に渡すと exit 2）
-- `scripts/collect_ci_facts.py`（タグSHA・配布URLの生死・secret の名前だけを集める。値は扱わない）
+- `scripts/collect_ci_facts.py`（タグSHA・配布URLの生死・secret の名前だけを集める。値は扱わない。
+  secret は repository・environment・organization の名前を合わせ、読めない範囲があれば exit 2）
 - 本repo CI で上記3 adapter を baseline 0 件で enforce
 
 ## [0.2.0] - 2026-10-24

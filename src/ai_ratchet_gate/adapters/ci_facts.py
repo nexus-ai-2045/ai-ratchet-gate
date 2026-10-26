@@ -169,54 +169,180 @@ def extract_asset_urls(text: str) -> tuple[str, ...]:
     return tuple(found)
 
 
-def _caller_provided_secrets(text: str) -> set[str]:
-    """`on.workflow_call.secrets` で呼び出し側から受け取る名前（登録先は呼び出し側）。"""
-    names: set[str] = set()
-    lines = text.splitlines()
+_BLOCK_SCALAR = re.compile(r"(?:^|[\s:-])[|>][1-9+-]{0,2}$")
+_BLOCK_KEY = re.compile(r"""^(?:-\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_-]*|"[^"]*"|'[^']*')\s*:(?:\s+(?P<rest>.*))?$""")
 
-    def indent(line: str) -> int:
-        return len(line) - len(line.lstrip(" "))
 
-    for index, line in enumerate(lines):
-        if line.strip() != "workflow_call:":
+def _strip_comment(line: str) -> str:
+    """YAML の注釈（引用の外で、行頭か空白の直後の `#` から後ろ）を外す。"""
+    quote: str | None = None
+    for index, char in enumerate(line):
+        if quote is not None:
+            if char == quote:
+                quote = None
             continue
-        base = indent(line)
+        if char in "\"'" and (index == 0 or line[index - 1] in " \t:[{,"):
+            quote = char
+            continue
+        if char == "#" and (index == 0 or line[index - 1] in " \t"):
+            return line[:index].rstrip()
+        continue
+    return line.rstrip()
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _active_lines(text: str) -> list[str]:
+    """注釈を外した行。ブロック文字列（`run: |` など）の中身はそのまま残す。
+
+    GitHub はブロック文字列の中の `${{ }}` も展開するので、シェルの `#` の後ろでも参照として数える。
+    """
+    result: list[str] = []
+    block_indent: int | None = None
+    for line in text.splitlines():
+        if block_indent is not None:
+            if not line.strip() or _indent(line) > block_indent:
+                result.append(line)
+                continue
+            block_indent = None
+        active = _strip_comment(line)
+        result.append(active)
+        if active.strip() and _BLOCK_SCALAR.search(active):
+            block_indent = _indent(line)
+    return result
+
+
+def _unquote(key: str) -> str:
+    key = key.strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in "\"'":
+        return key[1:-1]
+    return key
+
+
+def _flow_mapping(text: str) -> dict[str, str] | None:
+    """`{a: 1, b: {c: 2}}` の一番外側の key と値（文字列のまま）。読めなければ None。"""
+    text = text.strip()
+    if not (text.startswith("{") and text.endswith("}")):
+        return None
+    body = text[1:-1]
+    parts: list[str] = []
+    depth = 0
+    quote: str | None = None
+    current: list[str] = []
+    for char in body:
+        if quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "\"'":
+            quote = char
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+            if depth < 0:
+                return None
+        elif char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    if depth != 0 or quote is not None:
+        return None
+    parts.append("".join(current))
+    mapping: dict[str, str] = {}
+    for part in parts:
+        if not part.strip():
+            continue
+        key, sep, value = part.partition(":")
+        if not sep:
+            mapping[_unquote(key)] = ""
+            continue
+        mapping[_unquote(key)] = value.strip()
+    return mapping
+
+
+def _flow_secret_names(workflow_call_value: str) -> set[str]:
+    call = _flow_mapping(workflow_call_value)
+    if call is None or "secrets" not in call:
+        return set()
+    secrets = _flow_mapping(call["secrets"])
+    return set() if secrets is None else {name.upper() for name in secrets}
+
+
+def _caller_provided_secrets(lines: list[str]) -> set[str]:
+    """`on.workflow_call.secrets` で呼び出し側から受け取る名前（登録先は呼び出し側）。
+
+    ブロック形式・フロー形式（`{required: true}` や `secrets: {A: ...}`）・注釈つきの行を読む。
+    読めない形は「受け取らない」とみなす（数える側に倒す＝赤になる側で、緩めない）。
+    """
+    names: set[str] = set()
+    for index, line in enumerate(lines):
+        match = _BLOCK_KEY.match(line.strip())
+        if match is None:
+            continue
+        key = _unquote(match.group("key"))
+        rest = (match.group("rest") or "").strip()
+        if key == "on" and rest.startswith("{"):
+            on = _flow_mapping(rest)
+            if on is not None and "workflow_call" in on:
+                names |= _flow_secret_names(on["workflow_call"])
+            continue
+        if key != "workflow_call":
+            continue
+        if rest.startswith("{"):
+            names |= _flow_secret_names(rest)
+            continue
+        if rest:
+            continue
+        base = _indent(line)
         cursor = index + 1
         while cursor < len(lines):
             current = lines[cursor]
-            stripped = current.strip()
-            if stripped and not stripped.startswith("#") and indent(current) <= base:
+            if current.strip() and _indent(current) <= base:
                 break
-            if stripped == "secrets:":
-                secrets_indent = indent(current)
-                key_indent: int | None = None
+            child = _BLOCK_KEY.match(current.strip())
+            if child is None or _unquote(child.group("key")) != "secrets":
                 cursor += 1
-                while cursor < len(lines):
-                    inner = lines[cursor]
-                    inner_stripped = inner.strip()
-                    if not inner_stripped or inner_stripped.startswith("#"):
-                        cursor += 1
-                        continue
-                    if indent(inner) <= secrets_indent:
-                        break
-                    if key_indent is None:
-                        key_indent = indent(inner)
-                    if indent(inner) == key_indent and inner_stripped.endswith(":"):
-                        names.add(inner_stripped[:-1].strip().upper())
-                    cursor += 1
                 continue
+            child_rest = (child.group("rest") or "").strip()
+            if child_rest.startswith("{"):
+                mapping = _flow_mapping(child_rest)
+                if mapping is not None:
+                    names |= {name.upper() for name in mapping}
+                cursor += 1
+                continue
+            secrets_indent = _indent(current)
+            key_indent: int | None = None
             cursor += 1
+            while cursor < len(lines):
+                inner = lines[cursor]
+                if not inner.strip():
+                    cursor += 1
+                    continue
+                if _indent(inner) <= secrets_indent:
+                    break
+                if key_indent is None:
+                    key_indent = _indent(inner)
+                if _indent(inner) == key_indent:
+                    entry = _BLOCK_KEY.match(inner.strip())
+                    if entry is not None:
+                        names.add(_unquote(entry.group("key")).upper())
+                cursor += 1
     return names
 
 
 def extract_secret_names(text: str) -> tuple[str, ...]:
     """workflow が参照する secret の名前（大文字化）。値は読まない。
 
+    YAML の注釈の中の参照は数えない（ブロック文字列の中身は GitHub が展開するので数える）。
     `GITHUB_TOKEN` と、`workflow_call` で呼び出し側から受け取る名前は除く。
     """
-    caller = _caller_provided_secrets(text)
+    lines = _active_lines(text)
+    caller = _caller_provided_secrets(lines)
     found: list[str] = []
-    for match in _SECRET_REF.finditer(text):
+    for match in _SECRET_REF.finditer("\n".join(lines)):
         name = (match.group("dot") or match.group("idx")).upper()
         if name in _BUILTIN_SECRETS or name in caller:
             continue
