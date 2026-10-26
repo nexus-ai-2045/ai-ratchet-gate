@@ -43,6 +43,18 @@ adapter の中でネットワークに出ると結果が再現できなくなる
   environment の secret は、`environment:` に決まった名前（文字列・`{name: ...}`・`name:` の子）を持つ job の中の
   参照にだけ足す。job の外・environment の無い job・式入りの environment では足さない（数える側に倒す）。
   どれか一つでも読めなければ「不明」として収集を止める（exit 2）。
+- job の environment 名が決まらないとき（式入りの `environment: ${{ ... }}`・matrix の式・読めない形）は、
+  その job の中の参照を **未登録として数える（違反、rc=1）**。「facts が足りない」観測エラー（rc=2）にはしない。
+  - 迷った点: 名前が決まらないのは「事実が足りない」とも読めるので、`secrets[matrix.x]` と同じく rc=2 で止める案もある。
+  - 今は rc=1 にする理由:
+    1. 赤にはなるので、通ってしまう穴にはならない（fail-closed のまま）。
+    2. 参照する secret の名前そのものは決まっている。決まらないのは、どの environment の secret を足すかだけ。
+       足さなければ repository と organization の secret だけで判定でき、そこに登録があれば正しく通る。
+       判定できる部分まで観測エラーにすると、repo の secret で足りている workflow まで止まる。
+    3. `secrets[matrix.x]` などの rc=2 は、数えるべき名前が分からず判定そのものができない場合に限る。
+       environment が決まらない場合は判定はできる（数える側に倒すだけ）なので、違反として出す。
+  - 違反が environment の不定によるものなら、environment を決まった名前に書くか、レビュー済みの baseline で扱う。
+  - rc=2 に変えるかは、実リポで式入りの environment が出てきたときに見直す（変えるなら別PRで、試験も同時に変える）。
 - facts が無い・schema が違う・必要な key が無い場合は fail-closed（exit 2）。
   特に secret 名の取得元が無いのに secret 参照がある場合、collector は key を省き、adapter が止まる。
 - baseline は既存と同じ `new_only` seed（空 `finding_ids`）で始め、増えたら赤にする。
