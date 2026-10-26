@@ -64,3 +64,21 @@ def test_log_redacts_home_python_and_root(tmp_path):
     assert str(Path.home()) not in out
     assert verify.sys.executable not in out
     assert "<repo>/b" in out
+
+
+def test_non_ascii_and_space_filenames_are_kept(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "t")
+    git("config", "user.email", "t@example.invalid")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_回帰.py").write_text("\n", encoding="utf-8")
+    (tmp_path / "b c.txt").write_text("\n", encoding="utf-8")
+    assert verify.changed_files("HEAD", root=tmp_path) == ["b c.txt", "tests/test_回帰.py"]

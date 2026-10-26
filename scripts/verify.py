@@ -33,8 +33,9 @@ def _git(*args: str, root: Path = ROOT) -> str:
 
 def changed_files(base: str, root: Path = ROOT) -> list[str]:
     merge_base = _git("merge-base", base, "HEAD", root=root).strip()
-    names = set(_git("diff", "--name-only", merge_base, root=root).split())
-    names |= set(_git("ls-files", "--others", "--exclude-standard", root=root).split())
+    names = set(_git("diff", "--name-only", "-z", merge_base, root=root).split("\0"))
+    names |= set(_git("ls-files", "-z", "--others", "--exclude-standard", root=root).split("\0"))
+    names.discard("")
     return sorted(names)
 
 
