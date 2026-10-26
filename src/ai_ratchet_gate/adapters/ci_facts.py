@@ -42,10 +42,12 @@ _ASSET_URL = re.compile(
     r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/"
     r"[^\s\"'`()<>#\\]+"
 )
-_SECRET_REF = re.compile(
-    r"""secrets\s*(?:\.\s*(?P<dot>[A-Za-z_][A-Za-z0-9_]*)"""
-    r"""|\[\s*["'](?P<idx>[A-Za-z_][A-Za-z0-9_]*)["']\s*\])"""
-)
+# 式の中の `secrets` 文脈（`x.secrets` のような属性や、もっと長い名前の一部は除く）
+_SECRET_CONTEXT = re.compile(r"(?<![A-Za-z0-9_.-])secrets(?![A-Za-z0-9_-])")
+_SECRET_DOT = re.compile(r"\s*\.\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_-])")
+_SECRET_INDEX_OPEN = re.compile(r"\s*\[\s*")
+_SECRET_INDEX_CLOSE = re.compile(r"\s*\]")
+_SECRET_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _SECRET_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 _BUILTIN_SECRETS = frozenset({"GITHUB_TOKEN"})
 _ZERO_SHA = "0" * 40
@@ -397,10 +399,67 @@ def _expressions(text: str) -> list[str]:
     return found
 
 
+def _mask_string_literals(expression: str) -> tuple[str, dict[int, tuple[str, int]]]:
+    """式の `'...'` の中身を空白にした式と、引用の開始位置ごとの (中身, 終わりの位置)（`''` は `'`）。
+
+    閉じていない引用は最後までを中身とみなす。
+    """
+    masked: list[str] = []
+    literals: dict[int, tuple[str, int]] = {}
+    index = 0
+    while index < len(expression):
+        if expression[index] != "'":
+            masked.append(expression[index])
+            index += 1
+            continue
+        start = index
+        value: list[str] = []
+        index += 1
+        while index < len(expression):
+            if expression[index] == "'":
+                if expression[index + 1 : index + 2] == "'":
+                    value.append("'")
+                    index += 2
+                    continue
+                index += 1
+                break
+            value.append(expression[index])
+            index += 1
+        literals[start] = ("".join(value), index)
+        masked.append(expression[start] + " " * (index - start - 1))
+    return "".join(masked), literals
+
+
+def _expression_secret_names(expression: str) -> list[str]:
+    """1つの式が読む secret の名前。名前が決まらない読み方は観測エラー（fail-closed）。
+
+    `secrets.NAME` と `secrets['NAME']` だけを名前として読む。`secrets[matrix.x]` や `toJSON(secrets)` のように
+    名前が決まらない読み方は、数えずに済ませると登録漏れを見逃すので RatchetError にする。
+    式の中の文字列（`format('secrets.X')` など）は参照として数えない。
+    """
+    masked, literals = _mask_string_literals(expression)
+    names: list[str] = []
+    for match in _SECRET_CONTEXT.finditer(masked):
+        cursor = match.end()
+        dot = _SECRET_DOT.match(masked, cursor)
+        if dot is not None:
+            names.append(dot.group("name"))
+            continue
+        index = _SECRET_INDEX_OPEN.match(masked, cursor)
+        if index is not None and index.end() in literals:
+            name, literal_end = literals[index.end()]
+            if _SECRET_IDENT.fullmatch(name) and _SECRET_INDEX_CLOSE.match(masked, literal_end):
+                names.append(name)
+                continue
+        raise RatchetError("ci_secret_reference_unresolved")
+    return names
+
+
 def extract_secret_names(text: str) -> tuple[str, ...]:
     """workflow が参照する secret の名前（大文字化）。値は読まない。
 
-    数えるのは `${{ ... }}` の式の中の参照だけ（`echo 'secrets.X'` のような素の文字は数えない）。
+    数えるのは `${{ ... }}` の式の中の参照だけ（`echo 'secrets.X'` や式の中の文字列は数えない）。
+    名前が決まらない読み方（`secrets[matrix.x]` など）があれば RatchetError（fail-closed）。
     YAML の注釈の中の参照は数えない（ブロック文字列と、行をまたぐ引用の中身は GitHub が展開するので数える）。
     `GITHUB_TOKEN` と、`on.workflow_call.secrets` で呼び出し側から受け取る名前は除く。
     """
@@ -408,8 +467,8 @@ def extract_secret_names(text: str) -> tuple[str, ...]:
     caller = _caller_provided_secrets(active)
     found: list[str] = []
     for expression in _expressions("\n".join(line.text for line in active)):
-        for match in _SECRET_REF.finditer(expression):
-            name = (match.group("dot") or match.group("idx")).upper()
+        for raw in _expression_secret_names(expression):
+            name = raw.upper()
             if name in _BUILTIN_SECRETS or name in caller:
                 continue
             if name not in found:
