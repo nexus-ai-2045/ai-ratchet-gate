@@ -721,3 +721,44 @@ def test_literal_secret_text_does_not_block_ci_without_source(
     _workflow(tmp_path, "a.yml", "run: echo 'secrets.EXAMPLE'\n")
     facts = collector.collect(tmp_path, tag_repos=(), secrets_repo=None)
     assert facts["registered_secret_names"] == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "${{ secrets[matrix.secret_name] }}",
+        "${{ toJSON(secrets) }}",
+        "${{ secrets[format('{0}_TOKEN', matrix.env)] }}",
+        '${{ secrets["DOUBLE_QUOTED"] }}',
+        "${{ secrets['BAD-NAME'] }}",
+        "${{ secrets['UNCLOSED }}",
+    ],
+)
+def test_unresolved_secret_access_fails_closed(expression: str) -> None:
+    # 名前が決まらない読み方を「参照なし」にすると登録漏れを見逃すので、観測エラーで止める
+    with pytest.raises(RatchetError, match="ci_secret_reference_unresolved"):
+        extract_secret_names(f"x: {expression}\n")
+
+
+def test_string_literals_inside_expressions_are_not_secret_references() -> None:
+    text = (
+        "a: ${{ format('secrets.EXAMPLE') }}\n"
+        "b: ${{ contains(github.event.head_commit.message, 'it''s secrets[x]') }}\n"
+        "c: ${{ github.event.inputs.secrets_note || inputs.secrets }}\n"
+        "d: ${{ secrets[ 'SPACED' ] }} ${{ secrets . DOTTED }} ${{ format('{0}', secrets['IDX']) }}\n"
+    )
+    assert extract_secret_names(text) == ("SPACED", "DOTTED", "IDX")
+
+
+def test_unresolved_secret_access_stops_collector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = _load_collector()
+    monkeypatch.setattr(collector, "tagged_shas", lambda repos: [])
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out = tmp_path / "f.json"
+    _workflow(repo, "a.yml", "env:\n  A: ${{ secrets.FIXED }}\n")
+    assert collector.main(["--repo", str(repo), "--out", str(out)]) == 0
+    out.unlink()
+    _workflow(repo, "a.yml", "env:\n  A: ${{ secrets[matrix.name] }}\n")
+    assert collector.main(["--repo", str(repo), "--out", str(out)]) == 2
+    assert not out.exists()

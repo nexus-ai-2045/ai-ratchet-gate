@@ -30,7 +30,8 @@ adapter の中でネットワークに出ると結果が再現できなくなる
     `${...}` を含むURLは実行時まで決まらないため数えない。subject は `path#asset-<url digest>`。
   - `ci.secret_declared`（rule `secret_not_registered`）: 参照 secret 名が facts の登録名に無い。
     `GITHUB_TOKEN` と `on.workflow_call.secrets` で呼び出し側から渡される名前は対象外。subject は `secret:NAME`。
-    数えるのは `${{ ... }}` の式の中の参照だけ。YAML の注釈の中の参照は数えない（ブロック文字列と行をまたぐ引用の中身は
+    数えるのは `${{ ... }}` の式の中の `secrets.NAME` と `secrets['NAME']` だけで、式の中の文字列は数えない。
+    名前が決まらない読み方（`secrets[matrix.x]`・`toJSON(secrets)` など）は観測エラーで止める（fail-closed）。YAML の注釈の中の参照は数えない（ブロック文字列と行をまたぐ引用の中身は
     GitHub が展開するので数える）。除外は一番上の `on.workflow_call.secrets` だけから取り、ブロック形式・フロー形式・
     注釈つきの行を読む。ブロック文字列や引用の中の文字は除外に使わず、読めない形は数える側に倒す。
 - secret 名の一覧は repository・environment（全 environment の和）・organization（repo に許可された分）を合わせる。
