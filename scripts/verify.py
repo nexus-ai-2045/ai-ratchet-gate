@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -36,6 +37,22 @@ def changed_files(base: str, root: Path = ROOT) -> list[str]:
     return sorted(names)
 
 
+def _consumers_pattern(module: str, root: Path) -> re.Pattern[str]:
+    """変えたモジュールと、それを（間接に）使うモジュールの名前すべてに当たる正規表現。"""
+    sources = {
+        p.stem: p.read_text(encoding="utf-8")
+        for base in ("src", "scripts")
+        for p in (root / base).rglob("*.py")
+    }
+    names = {module}
+    while True:
+        pattern = re.compile(r"\b(?:" + "|".join(map(re.escape, sorted(names))) + r")\b")
+        grown = names | {stem for stem, text in sources.items() if pattern.search(text)}
+        if grown == names:
+            return pattern
+        names = grown
+
+
 def related_tests(files: list[str], root: Path = ROOT) -> list[str] | None:
     """変えたファイルに関係するテスト。Noneは「全部のテストに戻す」。"""
     all_tests = sorted(
@@ -51,7 +68,7 @@ def related_tests(files: list[str], root: Path = ROOT) -> list[str] | None:
             if (root / name).exists():
                 tests.add(name)
         elif name.endswith(".py") and name.startswith(("src/", "scripts/")):
-            pattern = re.compile(rf"\b{re.escape(Path(name).stem)}\b")
+            pattern = _consumers_pattern(Path(name).stem, root)
             hits = [
                 t
                 for t in all_tests
@@ -63,6 +80,11 @@ def related_tests(files: list[str], root: Path = ROOT) -> list[str] | None:
         elif name == "CHANGELOG.md":
             tests.add("tests/test_release_changelog.py")
     return sorted(tests)
+
+
+def display_path(path: Path, root: Path) -> str:
+    """linked worktreeではgit-dirがROOTの外にあるため、相対パスで示す（実ホームパスを出さない）。"""
+    return Path(os.path.relpath(path, root)).as_posix()
 
 
 def _preflight() -> int:
@@ -141,7 +163,7 @@ def run_changed(base: str) -> int:
     )
     if failed:
         print("失敗した項目: " + "、".join(failed))
-    print(f"全文のログ: {log_path.relative_to(ROOT).as_posix()}")
+    print(f"全文のログ: {display_path(log_path, ROOT)}")
     print("PRを出す前とマージ前は、引数なしの全部の検証を回してください。")
     return 0 if not failed else 1
 

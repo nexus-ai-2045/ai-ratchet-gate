@@ -115,6 +115,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "tests/test_skill_provenance.py",
     "tests/test_smoke_install_artifacts.py",
     "tests/test_test_disable.py",
+    "tests/test_verify_changed.py",
     "tests/test_waiver.py",
     "ai_ratchet_gate.py",
     "setup.cfg",
