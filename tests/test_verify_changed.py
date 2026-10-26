@@ -69,8 +69,15 @@ def test_log_redacts_home_python_and_root(tmp_path):
 def test_non_ascii_and_space_filenames_are_kept(tmp_path):
     import subprocess
 
+    import os
+
+    # 呼び出し元の GIT_DIR などを引き継ぐと一時リポの外を書き換えるので外す
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
     def git(*args):
-        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, env=env
+        )
 
     git("init", "-q", "-b", "main")
     git("config", "user.name", "t")
@@ -81,4 +88,11 @@ def test_non_ascii_and_space_filenames_are_kept(tmp_path):
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_回帰.py").write_text("\n", encoding="utf-8")
     (tmp_path / "b c.txt").write_text("\n", encoding="utf-8")
-    assert verify.changed_files("HEAD", root=tmp_path) == ["b c.txt", "tests/test_回帰.py"]
+    old = {k: os.environ.pop(k) for k in list(os.environ) if k.startswith("GIT_")}
+    try:
+        assert verify.changed_files("HEAD", root=tmp_path) == [
+            "b c.txt",
+            "tests/test_回帰.py",
+        ]
+    finally:
+        os.environ.update(old)
