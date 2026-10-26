@@ -83,9 +83,14 @@ def _read_text(path: Path) -> str:
 
 
 def _iter_ci_files(root: Path) -> tuple[Path, ...]:
-    """`.github/` 配下の通常fileを決定的な順で列挙する。無ければ空。"""
+    """`.github/` 配下の通常fileを決定的な順で列挙する。無ければ空。
+
+    repo の根そのものが無い・dir でないときは、空の repo とみなさず観測エラーにする（fail-closed）。
+    """
     base = root / CI_DIR
     try:
+        if not root.exists() or not root.is_dir():
+            raise RatchetError("adapter_observation_failed")
         if base.is_symlink():
             raise RatchetError("ci_path_is_symlink")
         if not base.exists():
@@ -178,25 +183,57 @@ _BLOCK_KEY = re.compile(r"""^(?:-\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_-]*|"[^"]*"|'[
 _QUOTE_START = re.compile(r"(?::|(?:^|\s)[?-])\s+$|[\[{,]\s*$")
 
 
+# YAML の二重引用の中の1文字の escape（`\xHH`・`\uHHHH`・`\UHHHHHHHH` は別に読む）
+_YAML_ESCAPES = {
+    "0": "\0", "a": "\a", "b": "\b", "t": "\t", "\t": "\t", "n": "\n", "v": "\v", "f": "\f",
+    "r": "\r", "e": "\x1b", " ": " ", '"': '"', "/": "/", "\\": "\\", "N": "\x85", "_": "\xa0",
+    "L": "\u2028", "P": "\u2029",
+}
+_YAML_HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
+_HEX = re.compile(r"[0-9A-Fa-f]+")
+
+
 @dataclass(frozen=True, slots=True)
 class _Line:
-    """注釈を外した1行。`in_block` はブロック文字列の中身、`in_quote` は前の行から続く引用の中。"""
+    """注釈を外した1行。
+
+    `text` は注釈を外しただけの行（構造を読む用）。`decoded` は二重引用の escape（16進の文字指定など）を
+    ほどいた行（GitHub が見る値で `${{ }}` を探す用）。`joins_next` は二重引用の行末のバックスラッシュで、
+    次の行と改行なしでつながる。`in_block` はブロック文字列の中身、`in_quote` は前の行から続く引用の中。
+    """
 
     text: str
+    decoded: str = ""
+    joins_next: bool = False
     in_block: bool = False
     in_quote: bool = False
 
 
-def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str | None]:
+def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str, bool, str | None]:
     """YAML の注釈（引用の外で、行頭か空白の直後の `#` から後ろ）を外す。
 
     引用は行をまたいで続くので、前の行から続く引用の種類を受け取り、行末の引用の種類を返す。
+    返すのは (注釈を外した行, 二重引用の escape をほどいた行, 行末のバックスラッシュで次とつながるか, 行末の引用)。
     """
+    decoded: list[str] = []
     index = 0
     while index < len(line):
         char = line[index]
         if quote == '"':
             if char == "\\":
+                escape = line[index + 1 : index + 2]
+                if not escape:
+                    return line.rstrip(), "".join(decoded), True, quote
+                width = _YAML_HEX_ESCAPES.get(escape)
+                digits = line[index + 2 : index + 2 + width] if width else ""
+                if width and len(digits) == width and _HEX.fullmatch(digits):
+                    try:
+                        decoded.append(chr(int(digits, 16)))
+                    except ValueError:
+                        decoded.append(line[index : index + 2 + width])
+                    index += 2 + width
+                    continue
+                decoded.append(_YAML_ESCAPES.get(escape, line[index : index + 2]))
                 index += 2
                 continue
             if char == '"':
@@ -204,15 +241,17 @@ def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str | None
         elif quote == "'":
             if char == "'":
                 if line[index + 1 : index + 2] == "'":
+                    decoded.append("''")
                     index += 2
                     continue
                 quote = None
         elif char in "\"'" and (not line[:index].strip() or _QUOTE_START.search(line[:index])):
             quote = char
         elif char == "#" and (index == 0 or line[index - 1] in " \t"):
-            return line[:index].rstrip(), quote
+            return line[:index].rstrip(), "".join(decoded).rstrip(), False, quote
+        decoded.append(char)
         index += 1
-    return line.rstrip(), quote
+    return line.rstrip(), "".join(decoded).rstrip(), False, quote
 
 
 def _indent(line: str) -> int:
@@ -230,12 +269,14 @@ def _active_lines(text: str) -> list[_Line]:
     for line in text.splitlines():
         if block_indent is not None:
             if not line.strip() or _indent(line) > block_indent:
-                result.append(_Line(line, in_block=True))
+                result.append(_Line(line, decoded=line, in_block=True))
                 continue
             block_indent = None
         continued = quote is not None
-        active, quote = _strip_comment(line, quote)
-        result.append(_Line(active, in_quote=continued))
+        active, decoded, joins_next, quote = _strip_comment(line, quote)
+        if continued:
+            decoded = decoded.lstrip(" \t")
+        result.append(_Line(active, decoded=decoded, joins_next=joins_next, in_quote=continued))
         if quote is None and active.strip() and _BLOCK_SCALAR.search(active):
             block_indent = _indent(line)
     return result
@@ -464,12 +505,14 @@ def extract_secret_names(text: str) -> tuple[str, ...]:
     数えるのは `${{ ... }}` の式の中の参照だけ（`echo 'secrets.X'` や式の中の文字列は数えない）。
     名前が決まらない読み方（`secrets[matrix.x]` など）があれば RatchetError（fail-closed）。
     YAML の注釈の中の参照は数えない（ブロック文字列と、行をまたぐ引用の中身は GitHub が展開するので数える）。
+    二重引用の escape（16進の文字指定や、行末のバックスラッシュでのつなぎ）はほどいてから探す。
     `GITHUB_TOKEN` と、`on.workflow_call.secrets` で呼び出し側から受け取る名前は除く。
     """
     active = _active_lines(text)
     caller = _caller_provided_secrets(active)
     found: list[str] = []
-    for expression in _expressions("\n".join(line.text for line in active)):
+    value = "".join(line.decoded + ("" if line.joins_next else "\n") for line in active)
+    for expression in _expressions(value):
         for raw in _expression_secret_names(expression):
             name = raw.upper()
             if name in _BUILTIN_SECRETS or name in caller:

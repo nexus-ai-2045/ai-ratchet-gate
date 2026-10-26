@@ -780,3 +780,33 @@ def test_property_named_secrets_after_spaced_dot_is_not_context() -> None:
         "c: ${{ secrets.REAL }}\n"
     )
     assert extract_secret_names(text) == ("REAL",)
+
+
+def test_double_quoted_yaml_escapes_are_decoded_before_matching() -> None:
+    # YAML がほどいた後の値を GitHub が見るので、escape で書いた ${{ }} も数える
+    text = (
+        'a: "\\x24{{ secrets.HEX }}"\n'
+        'b: "\\u0024{{ secrets.UNICODE }}"\n'
+        'c: "${{ secr\\\n'
+        '    ets.JOINED }}"\n'
+        'd: "${{ secrets.\\x41BC }}"\n'
+        "e: '\\x24{{ secrets.SINGLE_IS_LITERAL }}'\n"
+        "f: \\x24{{ secrets.PLAIN_IS_LITERAL }}\n"
+    )
+    assert extract_secret_names(text) == ("HEX", "UNICODE", "JOINED", "ABC")
+
+
+def test_missing_repo_root_is_observation_error(tmp_path: Path) -> None:
+    # 取り出し失敗や path の打ち間違いを「CI file の無い repo」とみなさない
+    facts = CiFacts(
+        tagged_shas=frozenset(), live_release_assets=frozenset(), registered_secret_names=frozenset()
+    )
+    for adapter in (
+        PinTaggedAdapter(facts),
+        ReleaseAssetLiveAdapter(facts),
+        SecretDeclaredAdapter(facts),
+    ):
+        with pytest.raises(RatchetError, match="adapter_observation_failed"):
+            adapter.observe(ScanContext(tmp_path / "missing", "s"))
+    with pytest.raises(RatchetError, match="adapter_observation_failed"):
+        required_secret_names(tmp_path / "missing")

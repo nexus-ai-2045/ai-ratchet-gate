@@ -96,6 +96,8 @@ python scripts/enforce_observe_evaluate.py --adapter ci.pin_tagged --baseline .a
 - `--secrets-from-gh` は repository・environment（全 environment の和）・organization（owner が organization のとき、
   repo に許可された分）の名前を合わせる。どれか一つでも読めないときは「不明」として exit 2（少ない一覧で誤って赤にしない）
 - 数えるのは `${{ ... }}` の式の中の `secrets.NAME` と `secrets['NAME']` だけ（`echo 'secrets.X'` のような素の文字や、式の中の文字列 `format('secrets.X')` は数えない）。閉じていない `${{` は最後まで式とみなす
+- 二重引用の YAML escape（16進の文字指定や、行末のバックスラッシュでのつなぎ）はほどいてから `${{ }}` を探す
+- repo の根が無い・dir でないときは「CI file の無い repo」とみなさず、観測エラー（exit 2）で止める
 - 文脈名 `secrets` は GitHub と同じく大文字小文字を区別しない（`SECRETS.X` も数える）。`inputs . secrets` のような属性は数えない
 - `secrets[matrix.x]` や `toJSON(secrets)` のように名前が決まらない読み方があれば、観測エラー（`ci_secret_reference_unresolved`、exit 2）で止める
 - YAML の注釈の中の secret 参照は数えない。`run: |` などブロック文字列と、行をまたぐ引用文字列の中身は GitHub が展開するので、`#` の後ろでも数える
