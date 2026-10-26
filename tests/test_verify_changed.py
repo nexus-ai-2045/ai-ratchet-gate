@@ -56,3 +56,11 @@ def test_log_path_outside_root_is_shown_relative(tmp_path):
     root = tmp_path / "wt"
     log = tmp_path / "main" / ".git" / "worktrees" / "wt" / "verify" / "x.log"
     assert verify.display_path(log, root) == "../main/.git/worktrees/wt/verify/x.log"
+
+
+def test_log_redacts_home_python_and_root(tmp_path):
+    text = f"{Path.home()}/a {verify.sys.executable} {tmp_path}/b"
+    out = verify.redact(text, tmp_path)
+    assert str(Path.home()) not in out
+    assert verify.sys.executable not in out
+    assert "<repo>/b" in out

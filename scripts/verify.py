@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import importlib.util
 import os
 import re
@@ -82,6 +83,30 @@ def related_tests(files: list[str], root: Path = ROOT) -> list[str] | None:
     return sorted(tests)
 
 
+def redact(text: str, root: Path) -> str:
+    """ログに実ホームパス・アカウント名・Pythonの場所・作業場所の絶対パスを残さない。"""
+    pairs = [
+        (sys.executable, "<python>"),
+        (sys.prefix, "<python-prefix>"),
+        (sys.base_prefix, "<python-base>"),
+        (str(root), "<repo>"),
+        (tempfile.gettempdir(), "<tmp>"),
+        (str(Path.home()), "~"),
+    ]
+    for old, new in pairs:
+        if old and old not in ("/", "."):
+            text = text.replace(old, new)
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001 - 取れない環境では置き換えない
+        user = ""
+    if len(user) >= 3:
+        text = re.sub(
+            rf"(?<![A-Za-z0-9_]){re.escape(user)}(?![A-Za-z0-9_])", "<user>", text
+        )
+    return text
+
+
 def display_path(path: Path, root: Path) -> str:
     """linked worktreeではgit-dirがROOTの外にあるため、相対パスで示す（実ホームパスを出さない）。"""
     return Path(os.path.relpath(path, root)).as_posix()
@@ -149,11 +174,19 @@ def run_changed(base: str) -> int:
         with log_path.open("w", encoding="utf-8") as log:
             for name, cmd in steps:
                 t0 = time.monotonic()
+                done = subprocess.run(
+                    cmd,
+                    cwd=ROOT,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
+                    check=False,
+                )
+                rc = done.returncode
                 log.write(f"===== {name}\n")
-                log.flush()
-                rc = subprocess.run(
-                    cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=False
-                ).returncode
+                log.write(redact(done.stdout, ROOT))
                 print(f"{'緑' if rc == 0 else '赤'} {name} {time.monotonic() - t0:.1f}秒")
                 if rc != 0:
                     failed.append(name)
