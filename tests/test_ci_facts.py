@@ -22,6 +22,7 @@ from ai_ratchet_gate.adapters.ci_facts import (
     extract_asset_urls,
     extract_pins,
     extract_secret_names,
+    extract_secret_references,
     referenced_asset_urls,
     required_secret_names,
 )
@@ -458,7 +459,7 @@ def test_workflow_call_flow_forms_are_recognized() -> None:
     )
     assert extract_secret_names(call_flow) == ("OWN",)
     on_flow = (
-        "on: {workflow_call: {secrets: {TOKEN_A: {}}}, push: {}}\n"
+        "on: {workflow_call: {secrets: {TOKEN_A: {}}}}\n"
         "x: ${{ secrets.TOKEN_A }} ${{ secrets.OWN }}\n"
     )
     assert extract_secret_names(on_flow) == ("OWN",)
@@ -559,9 +560,11 @@ def test_secret_names_include_environment_and_organization(
         }
     )
     monkeypatch.setattr(collector, "_gh_lines", run)
-    assert collector.registered_secret_names_from_gh("o/r") == [
-        "ENV_PROD", "ENV_STAGE", "ORG_GRANTED", "REPO_ONE",
-    ]
+    # environment の secret は和にせず、environment ごとに分けて返す
+    assert collector.registered_secret_names_from_gh("o/r") == (
+        ["ORG_GRANTED", "REPO_ONE"],
+        {"prod": ["ENV_PROD"], "stage one": ["ENV_STAGE"]},
+    )
     assert "repos/o/r/actions/organization-secrets" in calls
 
 
@@ -576,7 +579,7 @@ def test_user_owned_repo_skips_organization_secrets(monkeypatch: pytest.MonkeyPa
         }
     )
     monkeypatch.setattr(collector, "_gh_lines", run)
-    assert collector.registered_secret_names_from_gh("u/r") == []
+    assert collector.registered_secret_names_from_gh("u/r") == ([], {})
     assert "repos/u/r/actions/organization-secrets" not in calls
 
 
@@ -831,3 +834,138 @@ def test_missing_repo_root_is_observation_error(tmp_path: Path) -> None:
             adapter.observe(ScanContext(tmp_path / "missing", "s"))
     with pytest.raises(RatchetError, match="adapter_observation_failed"):
         required_secret_names(tmp_path / "missing")
+
+
+# --- 追いPR: 免除が広い2件を狭める（push と併用の workflow_call・environment の和） ---------
+
+
+@pytest.mark.parametrize(
+    "on_block",
+    [
+        "on: {push: {}, workflow_call: {secrets: {TOKEN_A: {}}}}\n",
+        "on: {workflow_call: {secrets: {TOKEN_A: {}}}, push: {}}\n",
+        "on:\n  push:\n  workflow_call:\n    secrets:\n      TOKEN_A:\n        required: true\n",
+        "on:\n  workflow_call:\n    secrets:\n      TOKEN_A: {}\n  pull_request:\n",
+        "on:\n  workflow_dispatch: {}\n  workflow_call: {secrets: {TOKEN_A: {}}}\n",
+    ],
+)
+def test_workflow_call_mixed_with_other_triggers_is_not_exempt(on_block: str) -> None:
+    # push などで走るときは repo の secret を読むので、受け取る名前でも数える
+    text = on_block + "jobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN_A }}\n"
+    assert extract_secret_names(text) == ("TOKEN_A",)
+
+
+def test_workflow_call_only_is_still_exempt() -> None:
+    text = (
+        "on:\n  workflow_call:\n    secrets:\n      TOKEN_A:\n        required: true\n"
+        "jobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN_A }}\n"
+    )
+    assert extract_secret_names(text) == ()
+
+
+ENV_WORKFLOW = (
+    "on: push\n"
+    "env:\n"
+    "  TOP: ${{ secrets.TOP_LEVEL }}\n"
+    "jobs:\n"
+    "  deploy:\n"
+    "    environment: Prod\n"
+    "    steps:\n"
+    "      - run: |\n"
+    "          echo ${{ secrets.ENV_ONLY }}\n"
+    "  flow:\n"
+    "    environment: {name: 'stage', url: 'https://x'}\n"
+    "    steps:\n"
+    "      - run: echo ${{ secrets.STAGE_ONLY }}\n"
+    "  block:\n"
+    "    environment:\n"
+    "      name: stage\n"
+    "    steps:\n"
+    "      - run: echo ${{ secrets.STAGE_ONLY }}\n"
+    "  plain:\n"
+    "    steps:\n"
+    "      - run: echo ${{ secrets.ENV_ONLY }}\n"
+    "  dynamic:\n"
+    "    environment: ${{ inputs.env }}\n"
+    "    steps:\n"
+    "      - run: echo ${{ secrets.STAGE_ONLY }}\n"
+)
+
+
+def test_secret_references_carry_job_environment() -> None:
+    assert extract_secret_references(ENV_WORKFLOW) == (
+        ("TOP_LEVEL", None),
+        ("ENV_ONLY", "prod"),
+        ("STAGE_ONLY", "stage"),
+        ("ENV_ONLY", None),
+        ("STAGE_ONLY", None),
+    )
+    assert extract_secret_names(ENV_WORKFLOW) == ("TOP_LEVEL", "ENV_ONLY", "STAGE_ONLY")
+
+
+def test_environment_secret_counts_only_in_job_with_that_environment(tmp_path: Path) -> None:
+    _workflow(tmp_path, "deploy.yml", ENV_WORKFLOW)
+    facts = _facts(
+        registered_secret_names=["TOP_LEVEL"],
+        environment_secret_names={"prod": ["ENV_ONLY"], "stage": ["STAGE_ONLY"]},
+    )
+    # plain（environment 無し）と dynamic（式入り）の job では environment の secret を読めない
+    assert sorted(_ids(SecretDeclaredAdapter(facts), tmp_path)) == [
+        "secret:ENV_ONLY", "secret:STAGE_ONLY",
+    ]
+
+
+def test_environment_secret_in_other_environment_is_not_registered(tmp_path: Path) -> None:
+    _workflow(
+        tmp_path,
+        "a.yml",
+        "jobs:\n  a:\n    environment: stage\n    steps:\n      - run: echo ${{ secrets.ENV_ONLY }}\n",
+    )
+    facts = _facts(environment_secret_names={"prod": ["ENV_ONLY"]})
+    assert _ids(SecretDeclaredAdapter(facts), tmp_path) == ["secret:ENV_ONLY"]
+    ok = _facts(environment_secret_names={"stage": ["ENV_ONLY"]})
+    assert _ids(SecretDeclaredAdapter(ok), tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        [],
+        {"Prod": ["X"]},
+        {"": ["X"]},
+        {"prod": "X"},
+        {"prod": ["lower"]},
+        {"prod": [1]},
+    ],
+)
+def test_invalid_environment_secret_facts_rejected(raw: object) -> None:
+    with pytest.raises(RatchetError):
+        _facts(environment_secret_names=raw)
+
+
+def test_collect_writes_environment_secret_names_separately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    collector = _load_collector()
+    run, _ = _fake_gh(
+        collector,
+        {
+            "repos/u/r": ["User"],
+            "repos/u/r/actions/secrets": ["REPO_ONE"],
+            "repos/u/r/environments": ["Prod"],
+            "repos/u/r/environments/Prod/secrets": ["ENV_PROD"],
+        },
+    )
+    monkeypatch.setattr(collector, "_gh_lines", run)
+    monkeypatch.setattr(collector, "tagged_shas", lambda repos: [])
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out = tmp_path / "out" / "facts.json"
+    code = collector.main(
+        ["--repo", str(repo), "--out", str(out), "--tag-repo", "o/r", "--secrets-from-gh", "u/r"]
+    )
+    assert code == 0
+    facts = json.loads(out.read_text(encoding="utf-8"))
+    assert facts["registered_secret_names"] == ["REPO_ONE"]
+    assert facts["environment_secret_names"] == {"prod": ["ENV_PROD"]}
+    CiFacts.from_dict(facts)

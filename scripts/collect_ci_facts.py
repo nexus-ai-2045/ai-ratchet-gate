@@ -127,10 +127,11 @@ def _gh_lines(path: str, jq: str) -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
 
-def registered_secret_names_from_gh(repo: str) -> list[str]:
+def registered_secret_names_from_gh(repo: str) -> tuple[list[str], dict[str, list[str]]]:
     """repo から使える secret の名前だけを読む（値は API も返さない）。
 
-    repository・environment（全 environment の和）・organization（repo に許可された分）を合わせる。
+    返すのは (repository と organization（repo に許可された分）の名前, environment ごとの名前)。
+    environment の secret はその environment を指定した job だけが読めるので、和にせず分けて返す。
     owner が organization なのに organization の一覧を読めないなど、どれか一つでも読めない
     ときは「不明」として FactsError にする。少ない一覧で誤って赤にはしない。
     """
@@ -138,17 +139,24 @@ def registered_secret_names_from_gh(repo: str) -> list[str]:
     if owner_type not in (["User"], ["Organization"]):
         raise FactsError("repo の owner 種別を確かめられません（不明）")
     names = set(_gh_lines(f"repos/{repo}/actions/secrets", ".secrets[].name"))
+    environments: dict[str, set[str]] = {}
     for environment in _gh_lines(f"repos/{repo}/environments", ".environments[].name"):
         encoded = urllib.parse.quote(environment, safe="")
-        names.update(
-            _gh_lines(f"repos/{repo}/environments/{encoded}/secrets", ".secrets[].name")
+        environments.setdefault(environment.lower(), set()).update(
+            name.upper()
+            for name in _gh_lines(
+                f"repos/{repo}/environments/{encoded}/secrets", ".secrets[].name"
+            )
         )
     if owner_type == ["Organization"]:
         # repo に許可された organization secret だけが返る
         names.update(
             _gh_lines(f"repos/{repo}/actions/organization-secrets", ".secrets[].name")
         )
-    return sorted(name.upper() for name in names)
+    return (
+        sorted(name.upper() for name in names),
+        {env: sorted(values) for env, values in sorted(environments.items())},
+    )
 
 
 def collect(
@@ -164,7 +172,9 @@ def collect(
     )
     needed = required_secret_names(repo)
     if secrets_repo is not None:
-        facts["registered_secret_names"] = registered_secret_names_from_gh(secrets_repo)
+        registered, environments = registered_secret_names_from_gh(secrets_repo)
+        facts["registered_secret_names"] = registered
+        facts["environment_secret_names"] = environments
     elif not needed:
         # 要る名前が無いので、一覧を取らなくても判定は変わらない
         facts["registered_secret_names"] = []

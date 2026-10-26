@@ -36,9 +36,13 @@ adapter の中でネットワークに出ると結果が再現できなくなる
     名前が決まらない読み方（`secrets[matrix.x]`・`toJSON(secrets)` など）は観測エラーで止める（fail-closed）。YAML の注釈の中の参照は数えない（ブロック文字列と行をまたぐ引用の中身は
     GitHub が展開するので数える）。除外は一番上の `on.workflow_call.secrets` だけから取り、ブロック形式・フロー形式・
     注釈つきの行を読む。ブロック文字列や引用の中の文字は除外に使わず、読めない形は数える側に倒す。
-- secret 名の一覧は repository・environment（全 environment の和）・organization（repo に許可された分）を合わせる。
-  どれか一つでも読めなければ「不明」として収集を止める（exit 2）。environment ごとの job 対応までは見ない
-  （和を使うので、別 environment の secret を誤って登録済みとみなす取りこぼしはあり得る）。
+    `on` に workflow_call 以外の起動（push・pull_request・workflow_dispatch など）も並ぶ workflow は、
+    その起動では repo の secret を読むので除外しない（数える側に倒す）。
+- secret 名の一覧は repository と organization（repo に許可された分）を `registered_secret_names` に、
+  environment の secret は environment ごとに `environment_secret_names`（名前は小文字）に分けて渡す。
+  environment の secret は、`environment:` に決まった名前（文字列・`{name: ...}`・`name:` の子）を持つ job の中の
+  参照にだけ足す。job の外・environment の無い job・式入りの environment では足さない（数える側に倒す）。
+  どれか一つでも読めなければ「不明」として収集を止める（exit 2）。
 - facts が無い・schema が違う・必要な key が無い場合は fail-closed（exit 2）。
   特に secret 名の取得元が無いのに secret 参照がある場合、collector は key を省き、adapter が止まる。
 - baseline は既存と同じ `new_only` seed（空 `finding_ids`）で始め、増えたら赤にする。
@@ -51,3 +55,16 @@ adapter の中でネットワークに出ると結果が再現できなくなる
   secret を参照する repository では権限のある場所で集めた facts を渡す。参照が無い repository は `[]` で通る。
 - 配布URLの生死はネットワーク結果に依存する。収集時の通信失敗は facts 不成立（exit 2）とし、
   「死んでいる」とは扱わない。
+
+## 未対応（案のみ）: Windows の pwsh で複数行 run の最終行だけが終了コードになる
+
+- 何が: `shell:` を書かない複数行の `run:` は、windows runner では pwsh で動く。pwsh は途中の外部コマンドが
+  失敗しても次の行へ進み、step の結果は最後の行の終了コードだけで決まる。ci.* の enforce step も同じ形。
+- 今の影響: ubuntu の job が `bash -e` で同じコマンドを走らせて止めるので、全体では fail-closed のまま。
+- 直し方の案（検査を変えるので人の判断後に別PR。.github を変えるので base-guard の解除が要る）:
+  1. enforce と collect の step に `shell: bash` を付ける（windows でも Git Bash の `bash -e` で、途中の失敗で止まる）。
+  2. または step を1コマンド1 step に分ける（どの shell でも最後の行＝唯一の行になる）。
+  3. pwsh のまま残すなら、step の先頭に `$ErrorActionPreference = 'Stop'` と
+     `$PSNativeCommandUseErrorActionPreference = $true` を置く（pwsh 7.3 以降で外部コマンドの失敗でも止まる）。
+  - おすすめは 1（差分が小さく、ubuntu と同じ動きになる）。`tests/test_ci_facts.py` の workflow 検査に
+    「ci.* の step は `shell: bash`」を足し、外されたら赤にする。
