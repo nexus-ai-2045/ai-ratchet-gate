@@ -179,8 +179,10 @@ def extract_asset_urls(text: str) -> tuple[str, ...]:
 
 _BLOCK_SCALAR = re.compile(r"(?:^|[\s:-])[|>][1-9+-]{0,2}$")
 _BLOCK_KEY = re.compile(r"""^(?:-\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_-]*|"[^"]*"|'[^']*')\s*:(?:\s+(?P<rest>.*))?$""")
-# 引用が始まれる位置（値の先頭）。`echo 'x` のような素の文字列の途中の引用符は引用にしない
-_QUOTE_START = re.compile(r"(?::|(?:^|\s)[?-])\s+$|[\[{,]\s*$")
+# 引用や flow（`[...]`・`{...}`）が始まれる位置（値の先頭）。`echo 'x` のような素の文字列の途中の引用符は引用にしない
+_VALUE_START = re.compile(r"(?::|(?:^|\s)[?-])\s+$")
+# flow の中だけで引用が始まれる位置（`[`・`{`・`,` の直後）。素の文字列の `f(a, 'b')` は引用にしない
+_FLOW_ITEM_START = re.compile(r"[\[{,]\s*$")
 
 
 # YAML の二重引用の中の1文字の escape（`\xHH`・`\uHHHH`・`\UHHHHHHHH` は別に読む）
@@ -209,11 +211,14 @@ class _Line:
     in_quote: bool = False
 
 
-def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str, bool, str | None]:
+def _strip_comment(
+    line: str, quote: str | None = None, flow: int = 0
+) -> tuple[str, str, bool, str | None, int]:
     """YAML の注釈（引用の外で、行頭か空白の直後の `#` から後ろ）を外す。
 
-    引用は行をまたいで続くので、前の行から続く引用の種類を受け取り、行末の引用の種類を返す。
-    返すのは (注釈を外した行, 二重引用の escape をほどいた行, 行末のバックスラッシュで次とつながるか, 行末の引用)。
+    引用と flow の深さは行をまたいで続くので、前の行から受け取り、行末の状態を返す。
+    返すのは (注釈を外した行, 引用の escape をほどいた行, 行末のバックスラッシュで次とつながるか, 行末の引用,
+    行末の flow の深さ)。
     """
     decoded: list[str] = []
     index = 0
@@ -223,7 +228,7 @@ def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str, bool,
             if char == "\\":
                 escape = line[index + 1 : index + 2]
                 if not escape:
-                    return line.rstrip(), "".join(decoded), True, quote
+                    return line.rstrip(), "".join(decoded), True, quote, flow
                 width = _YAML_HEX_ESCAPES.get(escape)
                 digits = line[index + 2 : index + 2 + width] if width else ""
                 if width and len(digits) == width and _HEX.fullmatch(digits):
@@ -241,17 +246,29 @@ def _strip_comment(line: str, quote: str | None = None) -> tuple[str, str, bool,
         elif quote == "'":
             if char == "'":
                 if line[index + 1 : index + 2] == "'":
-                    decoded.append("''")
+                    # YAML の一重引用では `''` が1つの `'` になる（GitHub はほどいた後の値を見る）
+                    decoded.append("'")
                     index += 2
                     continue
                 quote = None
-        elif char in "\"'" and (not line[:index].strip() or _QUOTE_START.search(line[:index])):
+        elif char in "\"'" and _can_start(line[:index], flow):
             quote = char
+        elif char in "[{" and (flow > 0 or _can_start(line[:index], 0)):
+            flow += 1
+        elif char in "]}" and flow > 0:
+            flow -= 1
         elif char == "#" and (index == 0 or line[index - 1] in " \t"):
-            return line[:index].rstrip(), "".join(decoded).rstrip(), False, quote
+            return line[:index].rstrip(), "".join(decoded).rstrip(), False, quote, flow
         decoded.append(char)
         index += 1
-    return line.rstrip(), "".join(decoded).rstrip(), False, quote
+    return line.rstrip(), "".join(decoded).rstrip(), False, quote, flow
+
+
+def _can_start(before: str, flow: int) -> bool:
+    """`before` の直後で引用や flow が始まれるか（値の先頭、または flow の中の要素の先頭）。"""
+    if not before.strip() or _VALUE_START.search(before):
+        return True
+    return flow > 0 and _FLOW_ITEM_START.search(before) is not None
 
 
 def _indent(line: str) -> int:
@@ -266,6 +283,7 @@ def _active_lines(text: str) -> list[_Line]:
     result: list[_Line] = []
     block_indent: int | None = None
     quote: str | None = None
+    flow = 0
     for line in text.splitlines():
         if block_indent is not None:
             if not line.strip() or _indent(line) > block_indent:
@@ -273,7 +291,7 @@ def _active_lines(text: str) -> list[_Line]:
                 continue
             block_indent = None
         continued = quote is not None
-        active, decoded, joins_next, quote = _strip_comment(line, quote)
+        active, decoded, joins_next, quote, flow = _strip_comment(line, quote, flow)
         if continued:
             decoded = decoded.lstrip(" \t")
         result.append(_Line(active, decoded=decoded, joins_next=joins_next, in_quote=continued))
