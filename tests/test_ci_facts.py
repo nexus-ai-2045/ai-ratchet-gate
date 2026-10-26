@@ -762,3 +762,21 @@ def test_unresolved_secret_access_stops_collector(tmp_path: Path, monkeypatch: p
     _workflow(repo, "a.yml", "env:\n  A: ${{ secrets[matrix.name] }}\n")
     assert collector.main(["--repo", str(repo), "--out", str(out)]) == 2
     assert not out.exists()
+
+
+def test_secret_context_name_is_case_insensitive() -> None:
+    # GitHub は文脈名の大文字小文字を区別しないので、SECRETS.X も secret を読む
+    text = "a: ${{ SECRETS.UPPER }} ${{ Secrets['MIXED'] }} ${{ secrets.lower }}\n"
+    assert extract_secret_names(text) == ("UPPER", "MIXED", "LOWER")
+    with pytest.raises(RatchetError, match="ci_secret_reference_unresolved"):
+        extract_secret_names("a: ${{ toJSON(SECRETS) }}\n")
+
+
+def test_property_named_secrets_after_spaced_dot_is_not_context() -> None:
+    text = (
+        "a: ${{ inputs . secrets }}\n"
+        "b: ${{ github.event.inputs.\n"
+        "  Secrets }}\n"
+        "c: ${{ secrets.REAL }}\n"
+    )
+    assert extract_secret_names(text) == ("REAL",)

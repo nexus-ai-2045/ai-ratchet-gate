@@ -42,8 +42,9 @@ _ASSET_URL = re.compile(
     r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/"
     r"[^\s\"'`()<>#\\]+"
 )
-# 式の中の `secrets` 文脈（`x.secrets` のような属性や、もっと長い名前の一部は除く）
-_SECRET_CONTEXT = re.compile(r"(?<![A-Za-z0-9_.-])secrets(?![A-Za-z0-9_-])")
+# 式の中の `secrets` 文脈。GitHub の式は文脈名の大文字小文字を区別しない（`SECRETS.X` も読む）。
+# もっと長い名前の一部は除く。`x.secrets`・`x . secrets` のような属性は直前の `.` を見て除く
+_SECRET_CONTEXT = re.compile(r"(?<![A-Za-z0-9_-])secrets(?![A-Za-z0-9_-])", re.IGNORECASE)
 _SECRET_DOT = re.compile(r"\s*\.\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_-])")
 _SECRET_INDEX_OPEN = re.compile(r"\s*\[\s*")
 _SECRET_INDEX_CLOSE = re.compile(r"\s*\]")
@@ -440,6 +441,8 @@ def _expression_secret_names(expression: str) -> list[str]:
     masked, literals = _mask_string_literals(expression)
     names: list[str] = []
     for match in _SECRET_CONTEXT.finditer(masked):
+        if masked[: match.start()].rstrip().endswith("."):
+            continue
         cursor = match.end()
         dot = _SECRET_DOT.match(masked, cursor)
         if dot is not None:
