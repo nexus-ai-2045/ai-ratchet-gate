@@ -30,6 +30,11 @@ adapter の中でネットワークに出ると結果が再現できなくなる
     `${...}` を含むURLは実行時まで決まらないため数えない。subject は `path#asset-<url digest>`。
   - `ci.secret_declared`（rule `secret_not_registered`）: 参照 secret 名が facts の登録名に無い。
     `GITHUB_TOKEN` と `on.workflow_call.secrets` で呼び出し側から渡される名前は対象外。subject は `secret:NAME`。
+    YAML の注釈の中の参照は数えない（ブロック文字列の中身は GitHub が展開するので数える）。
+    `workflow_call` はブロック形式・フロー形式・注釈つきの行を読み、読めない形は数える側に倒す。
+- secret 名の一覧は repository・environment（全 environment の和）・organization（repo に許可された分）を合わせる。
+  どれか一つでも読めなければ「不明」として収集を止める（exit 2）。environment ごとの job 対応までは見ない
+  （和を使うので、別 environment の secret を誤って登録済みとみなす取りこぼしはあり得る）。
 - facts が無い・schema が違う・必要な key が無い場合は fail-closed（exit 2）。
   特に secret 名の取得元が無いのに secret 参照がある場合、collector は key を省き、adapter が止まる。
 - baseline は既存と同じ `new_only` seed（空 `finding_ids`）で始め、増えたら赤にする。

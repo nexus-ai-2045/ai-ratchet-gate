@@ -414,3 +414,212 @@ def test_collect_records_only_live_assets(
 def test_collect_rejects_output_inside_repo(tmp_path: Path) -> None:
     collector = _load_collector()
     assert collector.main(["--repo", str(tmp_path), "--out", str(tmp_path / "f.json")]) == 2
+
+
+# --- PR #6 レビュー対応: workflow_call の書き方・注釈・secret の範囲 ----------------
+
+
+def test_workflow_call_with_trailing_comment_is_recognized() -> None:
+    text = (
+        "on:\n"
+        "  workflow_call: # 再利用\n"
+        "    secrets: # 呼び出し側から受け取る\n"
+        "      PASSED_IN: # 注釈\n"
+        "        required: true\n"
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: echo ${{ secrets.PASSED_IN }} ${{ secrets.NEEDED }}\n"
+    )
+    assert extract_secret_names(text) == ("NEEDED",)
+
+
+def test_workflow_call_flow_forms_are_recognized() -> None:
+    entry_flow = (
+        "on:\n"
+        "  workflow_call:\n"
+        "    secrets:\n"
+        "      TOKEN_A: {required: true}\n"
+        "      'TOKEN_B': {required: false, description: \"x, y\"}\n"
+        "x: ${{ secrets.TOKEN_A }} ${{ secrets.TOKEN_B }} ${{ secrets.OWN }}\n"
+    )
+    assert extract_secret_names(entry_flow) == ("OWN",)
+    secrets_flow = (
+        "on:\n"
+        "  workflow_call:\n"
+        "    secrets: {TOKEN_A: {required: true}, TOKEN_B: {}}\n"
+        "x: ${{ secrets.TOKEN_A }} ${{ secrets.TOKEN_B }} ${{ secrets.OWN }}\n"
+    )
+    assert extract_secret_names(secrets_flow) == ("OWN",)
+    call_flow = (
+        "on:\n"
+        "  workflow_call: {secrets: {TOKEN_A: {required: true}}}\n"
+        "x: ${{ secrets.TOKEN_A }} ${{ secrets.OWN }}\n"
+    )
+    assert extract_secret_names(call_flow) == ("OWN",)
+    on_flow = (
+        "on: {workflow_call: {secrets: {TOKEN_A: {}}}, push: {}}\n"
+        "x: ${{ secrets.TOKEN_A }} ${{ secrets.OWN }}\n"
+    )
+    assert extract_secret_names(on_flow) == ("OWN",)
+
+
+def test_unreadable_workflow_call_flow_keeps_counting() -> None:
+    # 読めない形は「受け取らない」とみなし、数える側（赤になる側）に倒す
+    text = (
+        "on:\n"
+        "  workflow_call: {secrets: {TOKEN_A: {required: true}}\n"
+        "x: ${{ secrets.TOKEN_A }}\n"
+    )
+    assert extract_secret_names(text) == ("TOKEN_A",)
+
+
+def test_workflow_call_not_under_secrets_is_not_exempt() -> None:
+    text = (
+        "on:\n"
+        "  workflow_call:\n"
+        "    inputs:\n"
+        "      TOKEN_A:\n"
+        "        type: string\n"
+        "x: ${{ secrets.TOKEN_A }}\n"
+    )
+    assert extract_secret_names(text) == ("TOKEN_A",)
+
+
+def test_secret_reference_in_yaml_comment_is_not_counted() -> None:
+    text = (
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      # - run: echo \"${{ secrets.OLD_TOKEN }}\"\n"
+        "      - run: echo ok # ${{ secrets.TRAILING_OLD }}\n"
+        "      - run: echo \"#${{ secrets.QUOTED }}\"\n"
+        "      - env:\n"
+        "          A: ${{ secrets.ACTIVE }}\n"
+    )
+    assert extract_secret_names(text) == ("QUOTED", "ACTIVE")
+
+
+def test_secret_reference_inside_block_scalar_is_still_counted() -> None:
+    # GitHub は run: | の中の ${{ }} もシェルの注釈ごと展開するので、数える
+    text = (
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: | # 手順\n"
+        "          echo start\n"
+        "          # echo ${{ secrets.IN_SHELL_COMMENT }}\n"
+        "\n"
+        "          echo ${{ secrets.IN_BLOCK }}\n"
+        "      # ${{ secrets.AFTER_BLOCK_COMMENT }}\n"
+        "      - run: >-\n"
+        "          ${{ secrets.FOLDED }}\n"
+    )
+    assert extract_secret_names(text) == ("IN_SHELL_COMMENT", "IN_BLOCK", "FOLDED")
+
+
+def test_comment_only_secret_reference_does_not_block_ci_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    collector = _load_collector()
+    monkeypatch.setattr(collector, "tagged_shas", lambda repos: [])
+    _workflow(tmp_path, "a.yml", "# x: ${{ secrets.OLD_TOKEN }}\nrun: echo ok\n")
+    facts = collector.collect(tmp_path, tag_repos=(), secrets_repo=None)
+    assert facts["registered_secret_names"] == []
+
+
+def _fake_gh(collector, responses: dict[str, list[str] | None]):
+    calls: list[str] = []
+
+    def run(path: str, jq: str) -> list[str]:
+        calls.append(path)
+        if path not in responses:
+            raise AssertionError(f"想定外の呼び出し: {path}")
+        value = responses[path]
+        if value is None:
+            raise collector.FactsError("読めない")
+        return list(value)
+
+    return run, calls
+
+
+def test_secret_names_include_environment_and_organization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = _load_collector()
+    run, calls = _fake_gh(
+        collector,
+        {
+            "repos/o/r": ["Organization"],
+            "repos/o/r/actions/secrets": ["REPO_ONE"],
+            "repos/o/r/environments": ["prod", "stage one"],
+            "repos/o/r/environments/prod/secrets": ["ENV_PROD"],
+            "repos/o/r/environments/stage%20one/secrets": ["env_stage"],
+            "repos/o/r/actions/organization-secrets": ["ORG_GRANTED"],
+        }
+    )
+    monkeypatch.setattr(collector, "_gh_lines", run)
+    assert collector.registered_secret_names_from_gh("o/r") == [
+        "ENV_PROD", "ENV_STAGE", "ORG_GRANTED", "REPO_ONE",
+    ]
+    assert "repos/o/r/actions/organization-secrets" in calls
+
+
+def test_user_owned_repo_skips_organization_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = _load_collector()
+    run, calls = _fake_gh(
+        collector,
+        {
+            "repos/u/r": ["User"],
+            "repos/u/r/actions/secrets": [],
+            "repos/u/r/environments": [],
+        }
+    )
+    monkeypatch.setattr(collector, "_gh_lines", run)
+    assert collector.registered_secret_names_from_gh("u/r") == []
+    assert "repos/u/r/actions/organization-secrets" not in calls
+
+
+@pytest.mark.parametrize(
+    "unreadable",
+    [
+        "repos/o/r",
+        "repos/o/r/actions/secrets",
+        "repos/o/r/environments",
+        "repos/o/r/environments/prod/secrets",
+        "repos/o/r/actions/organization-secrets",
+    ],
+)
+def test_any_unreadable_secret_scope_is_unknown_and_stops(
+    unreadable: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    collector = _load_collector()
+    responses: dict[str, list[str] | None] = {
+        "repos/o/r": ["Organization"],
+        "repos/o/r/actions/secrets": [],
+        "repos/o/r/environments": ["prod"],
+        "repos/o/r/environments/prod/secrets": [],
+        "repos/o/r/actions/organization-secrets": [],
+    }
+    responses[unreadable] = None
+    run, _ = _fake_gh(collector, responses)
+    monkeypatch.setattr(collector, "_gh_lines", run)
+    monkeypatch.setattr(collector, "tagged_shas", lambda repos: [])
+    with pytest.raises(collector.FactsError):
+        collector.registered_secret_names_from_gh("o/r")
+    out = tmp_path / "out" / "facts.json"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    code = collector.main(
+        ["--repo", str(repo), "--out", str(out), "--tag-repo", "o/r", "--secrets-from-gh", "o/r"]
+    )
+    assert code == 2
+    assert not out.exists()
+
+
+def test_unknown_owner_type_is_unknown_and_stops(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = _load_collector()
+    run, _ = _fake_gh(collector, {"repos/o/r": ["Bot"]})
+    monkeypatch.setattr(collector, "_gh_lines", run)
+    with pytest.raises(collector.FactsError):
+        collector.registered_secret_names_from_gh("o/r")

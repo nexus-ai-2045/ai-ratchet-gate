@@ -2,7 +2,7 @@
 """ci.* adapter（ADR-0009）が使う外の事実を集め、ci-facts/v1 として書き出す。
 
 読むだけ。GitHub へは `git ls-remote`、配布先URLへの HEAD/GET、
-（指定したときだけ）`gh api` の secret 名一覧の GET を使う。書き込みはしない。
+（指定したときだけ）`gh api` の secret 名一覧の GET（repository・environment・organization）を使う。書き込みはしない。
 secret は名前だけを扱い、値は読まない・書かない（API も値を返さない）。
 事実を確かめられないときは成功を報告しない（exit 2）。
 """
@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -109,25 +110,45 @@ def asset_is_live(url: str) -> bool:
     return status in {200, 206}
 
 
-def registered_secret_names_from_gh(repo: str) -> list[str]:
-    """`gh api` で secret の名前だけを読む（値は API も返さない）。"""
+def _gh_lines(path: str, jq: str) -> list[str]:
+    """`gh api --paginate <path> --jq <jq>` の出力行。読めなければ FactsError（不明＝止める）。"""
     try:
         completed = subprocess.run(
-            [
-                "gh", "api", "--paginate",
-                f"repos/{repo}/actions/secrets",
-                "--jq", ".secrets[].name",
-            ],
+            ["gh", "api", "--paginate", path, "--jq", jq],
             capture_output=True,
             text=True,
             check=False,
             timeout=GIT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise FactsError("secret の名前一覧を取れません") from error
+        raise FactsError("secret の名前一覧を取れません（不明）") from error
     if completed.returncode != 0:
-        raise FactsError("secret の名前一覧を取れません")
-    return sorted({line.strip().upper() for line in completed.stdout.splitlines() if line.strip()})
+        raise FactsError("secret の名前一覧を取れません（不明）")
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def registered_secret_names_from_gh(repo: str) -> list[str]:
+    """repo から使える secret の名前だけを読む（値は API も返さない）。
+
+    repository・environment（全 environment の和）・organization（repo に許可された分）を合わせる。
+    owner が organization なのに organization の一覧を読めないなど、どれか一つでも読めない
+    ときは「不明」として FactsError にする。少ない一覧で誤って赤にはしない。
+    """
+    owner_type = _gh_lines(f"repos/{repo}", ".owner.type")
+    if owner_type not in (["User"], ["Organization"]):
+        raise FactsError("repo の owner 種別を確かめられません（不明）")
+    names = set(_gh_lines(f"repos/{repo}/actions/secrets", ".secrets[].name"))
+    for environment in _gh_lines(f"repos/{repo}/environments", ".environments[].name"):
+        encoded = urllib.parse.quote(environment, safe="")
+        names.update(
+            _gh_lines(f"repos/{repo}/environments/{encoded}/secrets", ".secrets[].name")
+        )
+    if owner_type == ["Organization"]:
+        # repo に許可された organization secret だけが返る
+        names.update(
+            _gh_lines(f"repos/{repo}/actions/organization-secrets", ".secrets[].name")
+        )
+    return sorted(name.upper() for name in names)
 
 
 def collect(
