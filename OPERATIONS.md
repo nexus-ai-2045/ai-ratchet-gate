@@ -77,6 +77,26 @@ finding ID集合をbaselineとしてレビューしてから`evaluate`へ接続�
 例外は既存の`ai-ratchet-gate.waivers/v1`だけを消費し、自由記述のskip reasonは許可条件にしません。
 symlink・非UTF-8・曖昧構文はfail-closed（exit 2）です。
 
+### ci.* adapter（pin・配布先・secret。ADR-0009）
+
+`ci.pin_tagged` / `ci.release_asset_live` / `ci.secret_declared` は、外部の事実を
+`ai-ratchet-gate.ci-facts/v1` として先に集め、`--facts` で渡したときだけ動きます。
+
+```bash
+python scripts/collect_ci_facts.py --out "$RUNNER_TEMP/ci-facts.json"
+# secret を参照する repo では、権限のある場所で名前だけを読む（値は読まない）
+# python scripts/collect_ci_facts.py --out ... --secrets-from-gh owner/name
+python scripts/enforce_observe_evaluate.py --adapter ci.pin_tagged --baseline .ai-ratchet-gate/baselines/ci.pin_tagged.v1.json --facts "$RUNNER_TEMP/ci-facts.json"
+```
+
+- タグSHAは既定で `nexus-ai-2045/repo-preflight` と `nexus-ai-2045/ai-ratchet-gate` の
+  `git ls-remote --tags` から読む（`--tag-repo` で追加・置換）
+- facts の出力先は検査対象repoの外に置く（repo内は exit 2）
+- secret 参照があるのに名前一覧が無い場合、collector は key を省き、adapter が fail-closed（exit 2）する
+- 通信失敗は facts 不成立（exit 2）。URL を「死んでいる」とは扱わない
+- `${...}` を含む配布URL、`uses: <他owner>/...@SHA`、`GITHUB_TOKEN`、`workflow_call` で渡される secret は数えない
+- 新しい pin はタグを打ってから進める。baseline を広げるのは人間レビュー対象
+
 ## 日常運用
 
 - 通常検査はread-onlyで実行する

@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from ai_ratchet_gate.cli import _read_json
+from ai_ratchet_gate.cli import CI_FACT_ADAPTERS, _read_json
 from ai_ratchet_gate.model import RatchetError
 
 
@@ -108,8 +108,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--adapter",
-        choices=["git.tracked_ignored", "skills.provenance", "test.disable"],
+        choices=[
+            "git.tracked_ignored",
+            "skills.provenance",
+            "test.disable",
+            *CI_FACT_ADAPTERS,
+        ],
         default="git.tracked_ignored",
+    )
+    parser.add_argument(
+        "--facts",
+        type=Path,
+        default=None,
+        help="ci.* adapter 用の ci-facts/v1。observe へフォワードするだけ（ci.* では必須）",
     )
     parser.add_argument(
         "--baseline",
@@ -153,6 +164,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    if args.adapter in CI_FACT_ADAPTERS and args.facts is None:
+        print(
+            "ERROR [enforce]: ci.* adapter には --facts（ci-facts/v1）が必要です",
+            file=sys.stderr,
+        )
+        return 2
+    if args.adapter not in CI_FACT_ADAPTERS and args.facts is not None:
+        print("ERROR [enforce]: --facts は ci.* adapter だけで使えます", file=sys.stderr)
+        return 2
+
     with tempfile.TemporaryDirectory(prefix="ai-ratchet-gate-enforce-") as raw_tmpdir:
         tmpdir = Path(raw_tmpdir)
         observation = tmpdir / "observation.json"
@@ -180,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                 subject,
                 "--out",
                 str(observation),
+                *(["--facts", str(args.facts.resolve())] if args.facts else []),
             ]
         )
         if observe_code != 0:
