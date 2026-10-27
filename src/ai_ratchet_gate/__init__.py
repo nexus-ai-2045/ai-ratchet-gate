@@ -11,6 +11,15 @@ from .adapters import (
 )
 from .engine import evaluate
 from .model import Decision, Finding, Observation, RatchetError
+from .operation_contracts import (
+    ResidualItem,
+    build_operation_receipt,
+    classify_residuals,
+    verify_operation_receipt,
+    verify_residual_report,
+    verify_scope_binding,
+    verify_scope_binding_receipt,
+)
 from .receipt import build_receipt
 from .waiver import (
     WaiverDocument,
@@ -32,6 +41,13 @@ from .cli import (
 )
 
 __all__ = [
+    "ResidualItem",
+    "build_operation_receipt",
+    "classify_residuals",
+    "verify_operation_receipt",
+    "verify_residual_report",
+    "verify_scope_binding",
+    "verify_scope_binding_receipt",
     "BASELINE_HEADER",
     "DEFAULT_BASELINE",
     "DEFAULT_SKILL_ROOTS",
@@ -60,4 +76,4 @@ __all__ = [
     "select_waived_finding_ids",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
