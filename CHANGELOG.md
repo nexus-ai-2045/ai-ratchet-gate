@@ -13,7 +13,9 @@
   と突き合わせて観測する。facts が無い場合は fail-closed
 - `observe --facts` と `scripts/enforce_observe_evaluate.py --facts`（ci.* 専用。既存 adapter に渡すと exit 2）
 - `scripts/collect_ci_facts.py`（タグSHA・配布URLの生死・secret の名前だけを集める。値は扱わない。
-  secret は repository・environment・organization の名前を合わせ、読めない範囲があれば exit 2）
+  secret は repository・organization の名前と、environment ごとの名前を分けて集め、読めない範囲があれば exit 2）
+- `ci.secret_declared` の除外を狭めた: push などと併用の `workflow_call` では受け取る名前も数える。
+  environment の secret は、その environment を指定した job の中の参照にだけ足す（全 environment の和にしない）
 - 本repo CI で上記3 adapter を baseline 0 件で enforce
 
 ## [0.3.0] - 2026-10-26

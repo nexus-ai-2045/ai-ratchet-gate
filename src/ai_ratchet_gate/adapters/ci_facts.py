@@ -392,6 +392,8 @@ def _caller_provided_secrets(active: list[_Line]) -> set[str]:
     ブロック形式・フロー形式（`{required: true}` や `secrets: {A: ...}`）・注釈つきの行を読む。
     ブロック文字列や引用の中の文字（`run: |` の heredoc など）と、一番上の `on` の下でない
     `workflow_call` は見ない。読めない形は「受け取らない」とみなす（数える側に倒す＝赤になる側で、緩めない）。
+    `on` に workflow_call 以外の起動（push など）も並ぶ workflow は、その起動では repo の secret を読むので
+    免除しない（数える側に倒す）。
     """
     lines = [line.text for line in active if not line.in_block and not line.in_quote]
     names: set[str] = set()
@@ -403,12 +405,17 @@ def _caller_provided_secrets(active: list[_Line]) -> set[str]:
             continue
         if top[1].startswith("{"):
             on = _flow_mapping(top[1])
-            if on is not None and "workflow_call" in on:
+            if on is not None and set(on) == {"workflow_call"}:
                 names |= _flow_secret_names(on["workflow_call"])
             continue
         if top[1]:
             continue
-        for event in _children(lines, index):
+        events = _children(lines, index)
+        keys = [_mapping_key(lines[event]) for event in events]
+        if any(key is None or key[0] != "workflow_call" for key in keys):
+            # 並びの項目や workflow_call 以外の起動がある → 免除しない
+            continue
+        for event in events:
             call = _mapping_key(lines[event])
             if call is None or call[0] != "workflow_call":
                 continue
@@ -517,6 +524,96 @@ def _expression_secret_names(expression: str) -> list[str]:
     return names
 
 
+def _environment_name(value: str, lines: list[str], index: int) -> str | None:
+    """job の `environment:` の名前（小文字）。式入り・読めない形は None（環境の secret を足さない＝数える側）。"""
+    if value.startswith("{"):
+        mapping = _flow_mapping(value)
+        name = None if mapping is None else mapping.get("name")
+    elif value:
+        name = value
+    else:
+        name = None
+        for child in _children(lines, index):
+            item = _mapping_key(lines[child])
+            if item is not None and item[0] == "name":
+                name = item[1]
+    if name is None:
+        return None
+    name = _unquote(name)
+    if not name or "${{" in name or name[0] in "{[|>&*!":
+        return None
+    return name.lower()
+
+
+def _job_spans(active: list[_Line]) -> list[tuple[int, int, str | None]]:
+    """一番上の `jobs:` の下の job ごとの (開始行, 終わり行, environment 名)。行は `active` の番号。"""
+    structural = [
+        (position, line.text)
+        for position, line in enumerate(active)
+        if not line.in_block and not line.in_quote
+    ]
+    lines = [text for _, text in structural]
+    spans: list[tuple[int, int, str | None]] = []
+    for index, line in enumerate(lines):
+        if _indent(line) != 0:
+            continue
+        top = _mapping_key(line)
+        if top is None or top[0] != "jobs" or top[1]:
+            continue
+        jobs = _children(lines, index)
+        end_of_jobs = next(
+            (
+                later
+                for later in range(index + 1, len(lines))
+                if lines[later].strip() and _indent(lines[later]) == 0
+            ),
+            len(lines),
+        )
+        for order, job in enumerate(jobs):
+            stop = jobs[order + 1] if order + 1 < len(jobs) else end_of_jobs
+            environment: str | None = None
+            for field in _children(lines, job):
+                item = _mapping_key(lines[field])
+                if item is not None and item[0] == "environment":
+                    environment = _environment_name(item[1], lines, field)
+            start = structural[job][0]
+            finish = structural[stop][0] if stop < len(structural) else len(active)
+            spans.append((start, finish, environment))
+    return spans
+
+
+def extract_secret_references(text: str) -> tuple[tuple[str, str | None], ...]:
+    """workflow が参照する secret の (名前, その job の environment 名)。
+
+    environment 名は、参照が `environment:` に決まった名前を持つ job の中にあるときだけ入る（小文字）。
+    job の外・environment の無い job・式入りの environment では None（repo と organization の secret だけで判定）。
+    除外のきまりは `extract_secret_names` と同じ。
+    """
+    active = _active_lines(text)
+    caller = _caller_provided_secrets(active)
+    spans = _job_spans(active)
+    owner: list[str | None] = [None] * len(active)
+    for start, finish, environment in spans:
+        for position in range(start, finish):
+            owner[position] = environment
+    segments: list[tuple[str | None, list[str]]] = []
+    for position, line in enumerate(active):
+        environment = owner[position]
+        if not segments or segments[-1][0] != environment:
+            segments.append((environment, []))
+        segments[-1][1].append(line.decoded + ("" if line.joins_next else "\n"))
+    found: list[tuple[str, str | None]] = []
+    for environment, parts in segments:
+        for expression in _expressions("".join(parts)):
+            for raw in _expression_secret_names(expression):
+                name = raw.upper()
+                if name in _BUILTIN_SECRETS or name in caller:
+                    continue
+                if (name, environment) not in found:
+                    found.append((name, environment))
+    return tuple(found)
+
+
 def extract_secret_names(text: str) -> tuple[str, ...]:
     """workflow が参照する secret の名前（大文字化）。値は読まない。
 
@@ -547,11 +644,14 @@ class CiFacts:
     tagged_shas: frozenset[str] | None = None
     live_release_assets: frozenset[str] | None = None
     registered_secret_names: frozenset[str] | None = None
+    # environment 名（小文字）→ その environment だけの secret 名。job ごとに足す（全 environment の和にしない）
+    environment_secret_names: dict[str, frozenset[str]] | None = None
 
     @classmethod
     def from_dict(cls, value: object) -> "CiFacts":
         allowed = {
             "schema", "tagged_shas", "live_release_assets", "registered_secret_names",
+            "environment_secret_names",
         }
         if not isinstance(value, dict) or not set(value) <= allowed:
             raise RatchetError("invalid_ci_facts")
@@ -569,7 +669,26 @@ class CiFacts:
                     raise RatchetError(f"invalid_ci_facts_{key}")
             return frozenset(raw)
 
+        environments: dict[str, frozenset[str]] | None = None
+        if "environment_secret_names" in value:
+            raw_env = value["environment_secret_names"]
+            if not isinstance(raw_env, dict) or len(raw_env) > MAX_FACT_ITEMS:
+                raise RatchetError("invalid_ci_facts_environment_secret_names")
+            environments = {}
+            for env_name, names in raw_env.items():
+                if (
+                    type(env_name) is not str
+                    or not env_name
+                    or env_name != env_name.lower()
+                    or not isinstance(names, list)
+                    or len(names) > MAX_FACT_ITEMS
+                    or any(type(n) is not str or _SECRET_NAME.fullmatch(n) is None for n in names)
+                ):
+                    raise RatchetError("invalid_ci_facts_environment_secret_names")
+                environments[env_name] = frozenset(names)
+
         return cls(
+            environment_secret_names=environments,
             tagged_shas=items("tagged_shas", re.compile(r"[0-9a-f]{40}")),
             live_release_assets=items(
                 "live_release_assets", re.compile(_ASSET_URL.pattern)
@@ -676,11 +795,15 @@ class SecretDeclaredAdapter(_CiAdapterBase):
     def observe(self, context: ScanContext) -> Observation:
         root = context.root
         registered = {name.upper() for name in self.facts.registered_secret_names or ()}
+        environments = self.facts.environment_secret_names or {}
         missing: set[str] = set()
         for path in _iter_ci_files(root):
-            for name in extract_secret_names(_read_text(path)):
-                if name not in registered:
-                    missing.add(name)
+            for name, environment in extract_secret_references(_read_text(path)):
+                if name in registered:
+                    continue
+                if environment is not None and name in environments.get(environment, ()):
+                    continue
+                missing.add(name)
         findings = [
             Finding.create(
                 adapter_id=self.adapter_id,
