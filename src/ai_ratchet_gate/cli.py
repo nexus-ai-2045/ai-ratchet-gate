@@ -33,7 +33,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .adapters import (
+    CiFacts,
+    PinTaggedAdapter,
+    ReleaseAssetLiveAdapter,
     ScanContext,
+    SecretDeclaredAdapter,
     SkillProvenanceAdapter,
     TestDisableAdapter,
     TrackedIgnoredAdapter,
@@ -44,6 +48,10 @@ from .receipt import build_receipt
 from .waiver import WaiverDocument, select_waived_finding_ids
 
 SKIP_ENV = "AI_RATCHET_GATE_SKIP"
+BASE_ADAPTERS = ("git.tracked_ignored", "skills.provenance", "test.disable")
+# 外の事実（ci-facts/v1）を --facts で受け取る adapter（ADR-0009）
+CI_FACT_ADAPTERS = ("ci.pin_tagged", "ci.release_asset_live", "ci.secret_declared")
+OBSERVE_ADAPTERS = BASE_ADAPTERS + CI_FACT_ADAPTERS
 DEFAULT_BASELINE = ".ai-ratchet-gate/baseline.txt"
 MAX_JSON_BYTES = 2 * 1024 * 1024
 
@@ -309,9 +317,16 @@ def _observe_main(argv: list[str]) -> int:
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument(
         "--adapter",
-        choices=["git.tracked_ignored", "skills.provenance", "test.disable"],
+        choices=list(OBSERVE_ADAPTERS),
         default="git.tracked_ignored",
         help="組み込みadapter。既定は git.tracked_ignored（legacy互換）",
+    )
+    parser.add_argument(
+        "--facts",
+        type=Path,
+        default=None,
+        help="ci.* adapter 用の ai-ratchet-gate.ci-facts/v1（scripts/collect_ci_facts.py が作る）。"
+        "ci.* では必須、それ以外では指定不可",
     )
     parser.add_argument(
         "--subject",
@@ -335,7 +350,20 @@ def _observe_main(argv: list[str]) -> int:
                 raise RatchetError("observation_out_unresolvable") from error
             if out_inside_repo:
                 raise RatchetError("observation_out_inside_repo")
-        if args.adapter == "skills.provenance":
+        facts = None
+        if args.adapter in CI_FACT_ADAPTERS:
+            if args.facts is None:
+                raise RatchetError("ci_facts_required")
+            facts = CiFacts.from_dict(_read_json(args.facts))
+        elif args.facts is not None:
+            raise RatchetError("facts_not_applicable")
+        if args.adapter == "ci.pin_tagged":
+            adapter = PinTaggedAdapter(facts)
+        elif args.adapter == "ci.release_asset_live":
+            adapter = ReleaseAssetLiveAdapter(facts)
+        elif args.adapter == "ci.secret_declared":
+            adapter = SecretDeclaredAdapter(facts)
+        elif args.adapter == "skills.provenance":
             adapter = SkillProvenanceAdapter()
         elif args.adapter == "test.disable":
             adapter = TestDisableAdapter()

@@ -42,6 +42,14 @@ jobs:
           python scripts/enforce_observe_evaluate.py --adapter skills.provenance --baseline .ai-ratchet-gate/baselines/skills.provenance.v1.json
           python scripts/enforce_observe_evaluate.py --adapter test.disable --baseline .ai-ratchet-gate/baselines/test.disable.v1.json
 
+      # ADR-0009: タグ・配布URL・secret 名（値は扱わない）を repo の外へ集めてから突き合わせる
+      - name: Enforce observe→evaluate (ci.* adapters)
+        run: |
+          python scripts/collect_ci_facts.py --out "${{ runner.temp }}/ci-facts.json"
+          python scripts/enforce_observe_evaluate.py --adapter ci.pin_tagged --baseline .ai-ratchet-gate/baselines/ci.pin_tagged.v1.json --facts "${{ runner.temp }}/ci-facts.json"
+          python scripts/enforce_observe_evaluate.py --adapter ci.release_asset_live --baseline .ai-ratchet-gate/baselines/ci.release_asset_live.v1.json --facts "${{ runner.temp }}/ci-facts.json"
+          python scripts/enforce_observe_evaluate.py --adapter ci.secret_declared --baseline .ai-ratchet-gate/baselines/ci.secret_declared.v1.json --facts "${{ runner.temp }}/ci-facts.json"
+
       - name: Build and install release artifacts
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         run: |

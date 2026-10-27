@@ -77,6 +77,36 @@ finding ID集合をbaselineとしてレビューしてから`evaluate`へ接続�
 例外は既存の`ai-ratchet-gate.waivers/v1`だけを消費し、自由記述のskip reasonは許可条件にしません。
 symlink・非UTF-8・曖昧構文はfail-closed（exit 2）です。
 
+### ci.* adapter（pin・配布先・secret。ADR-0009）
+
+`ci.pin_tagged` / `ci.release_asset_live` / `ci.secret_declared` は、外部の事実を
+`ai-ratchet-gate.ci-facts/v1` として先に集め、`--facts` で渡したときだけ動きます。
+
+```bash
+python scripts/collect_ci_facts.py --out "$RUNNER_TEMP/ci-facts.json"
+# secret を参照する repo では、権限のある場所で名前だけを読む（値は読まない）
+# python scripts/collect_ci_facts.py --out ... --secrets-from-gh owner/name
+python scripts/enforce_observe_evaluate.py --adapter ci.pin_tagged --baseline .ai-ratchet-gate/baselines/ci.pin_tagged.v1.json --facts "$RUNNER_TEMP/ci-facts.json"
+```
+
+- タグSHAは既定で `nexus-ai-2045/repo-preflight` と `nexus-ai-2045/ai-ratchet-gate` の
+  `git ls-remote --tags` から読む（`--tag-repo` で追加・置換）
+- facts の出力先は検査対象repoの外に置く（repo内は exit 2）
+- secret 参照があるのに名前一覧が無い場合、collector は key を省き、adapter が fail-closed（exit 2）する
+- `--secrets-from-gh` は repository・environment（全 environment の和）・organization（owner が organization のとき、
+  repo に許可された分）の名前を合わせる。どれか一つでも読めないときは「不明」として exit 2（少ない一覧で誤って赤にしない）
+- 数えるのは `${{ ... }}` の式の中の `secrets.NAME` と `secrets['NAME']` だけ（`echo 'secrets.X'` のような素の文字や、式の中の文字列 `format('secrets.X')` は数えない）。閉じていない `${{` は最後まで式とみなす
+- 二重引用の YAML escape（16進の文字指定や、行末のバックスラッシュでのつなぎ）はほどいてから `${{ }}` を探す
+- repo の根が無い・dir でないときは「CI file の無い repo」とみなさず、観測エラー（exit 2）で止める
+- 文脈名 `secrets` は GitHub と同じく大文字小文字を区別しない（`SECRETS.X` も数える）。`inputs . secrets` のような属性は数えない
+- `secrets[matrix.x]` や `toJSON(secrets)` のように名前が決まらない読み方があれば、観測エラー（`ci_secret_reference_unresolved`、exit 2）で止める
+- YAML の注釈の中の secret 参照は数えない。`run: |` などブロック文字列と、行をまたぐ引用文字列の中身は GitHub が展開するので、`#` の後ろでも数える
+- `workflow_call` の secret 宣言は、注釈つきの行とフロー形式（`NAME: {required: true}`、`secrets: {...}`、`on: {workflow_call: ...}`）も読む。
+  除外に使うのは一番上の `on` の下の `workflow_call` だけ（`run: |` の heredoc などの文字は使わない）。読めない形は「受け取らない」とみなして数える（緩めない側）
+- 通信失敗は facts 不成立（exit 2）。URL を「死んでいる」とは扱わない
+- `${...}` を含む配布URL、`uses: <他owner>/...@SHA`、`GITHUB_TOKEN`、`workflow_call` で渡される secret は数えない
+- 新しい pin はタグを打ってから進める。baseline を広げるのは人間レビュー対象
+
 ## 日常運用
 
 - 通常検査はread-onlyで実行する

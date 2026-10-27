@@ -1,6 +1,8 @@
 # ai-ratchet-gate
 
-**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。現在のrepositoryはpublicの再構築先で、配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
+**現状:** 人間が確認した失敗をagent非依存のguardへ変え、同じ種類の新規悪化をfail-closedで止めるratchet型ゲート。built-in adapterは3種（`git.tracked_ignored` / `skills.provenance` / `test.disable`）。配布はGitHub Release `v0.2.0` のwheelです（v1.0は主張しない）。
+
+現在のrepositoryはpublicの再構築先です。移行前v0.1.1のwheelと現在のsourceは中身が別物なので区別します。branch protection、公開、配布物更新、v1.0宣言はそれぞれ人間判断の対象です。
 
 作業中のsourceは次期版 `0.3.0` です。以下の配布案内は現在の公開版 `v0.2.0` を指します。
 
@@ -83,9 +85,10 @@ AIエージェント運用でこれが効くのは、エージェントが「直
 |---|---|
 | このrepoの `tracked ∧ ignored` | **稼働中** (CI verify + baseline 0 件) |
 | 汎用 `observe` / `evaluate` subcommand | 提供中 (opt-in。adapterは上記3個) |
-| local/CI の observe→evaluate 運用接続 | 提供中 (`scripts/enforce_observe_evaluate.py`。本repo CIで3 adapterをenforce) |
+| local/CI の observe→evaluate 運用接続 | 提供中 (`scripts/enforce_observe_evaluate.py`。本repo CIで6 adapterをenforce) |
 | `skills.provenance`（SKILL.md / scripts） | 提供中 (opt-in。`observe --adapter skills.provenance`) |
 | `test.disable`（skip / only / hollow） | 提供中 (opt-in。`observe --adapter test.disable`。Issue #11) |
+| `ci.pin_tagged` / `ci.release_asset_live` / `ci.secret_declared` | 提供中 (opt-in。`observe --facts` 必須。[ADR-0009](docs/adr/ADR-0009-ci-facts-adapters.md)。本repo CIで baseline 0 件で enforce) |
 | 期限付きwaiver (`evaluate --waiver`) | 提供中 (opt-in。レビュー済みファイルの消費のみ) |
 | solution-knowledge (`load` / `compose` / `resolve`) | 提供中 (Python engine API。CLI subcommandではない) |
 | `agent.fact_output`（structured claim/source） | 提供中 (read-only CLI。第四 built-in observe adapterではない。[ADR-0006](docs/adr/ADR-0006-fact-output-enforcement.md)。各 runtime は pre-render hook + negative smoke が揃うまで `not_enforced`) |
