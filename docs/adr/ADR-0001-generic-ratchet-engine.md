@@ -104,3 +104,5 @@ scan、receipt、baseline縮小候補、修復候補の生成までは自動化�
    （実装済み: `docs/threat-model.md`の回帰表、`scripts/enforce_observe_evaluate.py`、
    CI Enforceステップ、`.pre-commit-hooks.yaml`、`OPERATIONS.md`を運用向け正本に拡充。
    公開CLIは増やさない。branch protection必須化・v1.0宣言は人間停止線）
+8. 規則の段・寿命・上限と、サンドボックスの段階を入れる（提案: [ADR-0010](ADR-0010-rule-lifecycle-and-sandbox.md)。
+   U1〜U10 を1単位ずつ別PRで進める。CIへの配線と必須化は人間停止線）

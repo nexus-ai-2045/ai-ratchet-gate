@@ -14,3 +14,4 @@
 | [ADR-0007](ADR-0007-solution-harness-loop.md) | proposed | 解決知識の適用・再検証Harness境界 |
 | [ADR-0008](ADR-0008-operation-evidence-contracts.md) | accepted | 外部操作・対象範囲・残務の証拠契約（opt-in Python API） |
 | [ADR-0009](ADR-0009-ci-facts-adapters.md) | accepted | CIのpin・配布先・secretを外部事実（ci-facts）で検査するadapter |
+| [ADR-0010](ADR-0010-rule-lifecycle-and-sandbox.md) | proposed | 規則の段・寿命・上限と、サンドボックスの段階（U0。文書のみ） |

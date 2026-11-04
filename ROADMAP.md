@@ -39,6 +39,7 @@ branch protection必須化やv1.0宣言そのものは人間所有のため、�
 - baselineと期限付きwaiverを分離する
 - 複数adapterを総合点へ潰さず、軸ごとにallow / deny / indeterminateを返す
 - 期限付きwaiver（`ai-ratchet-gate.waivers/v1`）の検証と、脅威モデル上の安価なゲームに対する回帰テスト
+- 規則の段（absolute / ratchet / advisory）・寿命・上限と、サンドボックスの段階（提案: [ADR-0010](docs/adr/ADR-0010-rule-lifecycle-and-sandbox.md)。未実装）
 
 完了条件は、既存CLIとの互換性を保ち、同じ入力から同じ判定を再現できることです。
 
