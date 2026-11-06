@@ -1,5 +1,7 @@
 # ADR-0009: CI の pin・配布先・secret を外部事実で検査する adapter
 
+> 2026-11-06追記。base-guardの廃止に伴い、以下の配線・解除に関する記述は旧方針として保持します。他の判断は従来の状態を維持します。
+
 - Status: Accepted
 - Date: 2026-10-26
 - Depends on: ADR-0001

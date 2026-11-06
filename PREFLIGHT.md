@@ -2,6 +2,10 @@
 
 現在の `nexus-ai-2045/ai-ratchet-gate`（repo ID `1428387173`）はpublicの再構築先です。配布は GitHub Release `v0.2.0` のwheel（URLとSHA-256で固定）で、方法は [README.md](README.md) を参照してください。移行前v0.1.1のwheelとは中身が別物です。tag・Release作成はそれぞれ人間の承認を経ます。
 
+## base-guardの廃止
+
+専用のbase-guardワークフローを廃止する。通常の共通preflightは、統合済みの `repo-preflight` `fe2e90f91615a5e5ed3f9b2b497c99f5786e5847` に固定する。既存の名義・秘密情報・文書整合と製品テストの検査を通して統合し、baselineや例外設定は拡大しない。
+
 以下は移行前の `nexus-ai-2045/ai-ratchet-gate-old-20261021`（repo ID `1332369895`）の検証・公開・Releaseに関する当時の記録です。PUBLIC／公開済み／download URLなどの記載は、現在の再構築先での提供状態を示しません。原記録は履歴資料として保持しています。
 
 <!-- repo-preflight:review-record -->
