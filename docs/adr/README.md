@@ -15,3 +15,4 @@
 | [ADR-0008](ADR-0008-operation-evidence-contracts.md) | accepted | 外部操作・対象範囲・残務の証拠契約（opt-in Python API） |
 | [ADR-0009](ADR-0009-ci-facts-adapters.md) | accepted | CIのpin・配布先・secretを外部事実（ci-facts）で検査するadapter |
 | [ADR-0010](ADR-0010-rule-lifecycle-and-sandbox.md) | proposed | 規則の段・寿命・上限と、サンドボックスの段階（U0。文書のみ） |
+| [ADR-0011](ADR-0011-central-gate-no-dotfiles.md) | proposed | ラチェットを中央の reusable workflow から呼び、導入先へ設定ファイルを置かない |

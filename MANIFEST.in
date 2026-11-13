@@ -14,4 +14,5 @@ exclude docs/adr/ADR-0003-solution-knowledge-propagation.md
 exclude docs/adr/ADR-0006-fact-output-enforcement.md
 exclude docs/adr/ADR-0007-solution-harness-loop.md
 exclude docs/adr/ADR-0010-rule-lifecycle-and-sandbox.md
+exclude docs/adr/ADR-0011-central-gate-no-dotfiles.md
 recursive-include scripts *.py
