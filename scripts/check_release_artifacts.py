@@ -106,6 +106,7 @@ ALLOWED_SDIST_SUFFIXES = (
     "src/ai_ratchet_gate.egg-info/requires.txt",
     "src/ai_ratchet_gate.egg-info/top_level.txt",
     "tests/test_ai_ratchet_gate.py",
+    "tests/test_central_gate.py",
     "tests/test_ci_facts.py",
     "tests/test_operation_contracts.py",
     "tests/test_enforce_observe_evaluate.py",

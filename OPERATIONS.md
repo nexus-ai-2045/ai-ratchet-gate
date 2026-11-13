@@ -61,8 +61,11 @@ exit codeは allow=`0`、deny=`1`、観測不能/schema不正=`2`。hookやCIは
 
 ## 導入
 
-導入先リポジトリの状態を先に確認し、現在の`tracked ∧ ignored`をbaselineとして記録します。
-baselineの初回差分を人間が確認してから、commit前の検査またはCIへ接続します。
+導入先へは設定ファイル・フックをコピーせず、中央の `.github/workflows/ratchet-gate.yml` を
+既存の `preflight.yml` から呼び、必須チェック `all-green` で待ちます（[ADR-0011](docs/adr/ADR-0011-central-gate-no-dotfiles.md)、
+書き方は README の「導入の最小手順」）。別の workflow に置くと必須にならず、赤でもマージできます。
+既定の baseline が無いときは見逃し 0 件として判定します。既存の`tracked ∧ ignored`を見逃す必要がある
+リポだけbaselineを記録し、初回差分を人間が確認します。
 
 第二adapter `skills.provenance`を使う場合は、対象repoの`.agents/skills/`および/または
 `skills/`（存在するrootだけが走査対象）を用意し、
