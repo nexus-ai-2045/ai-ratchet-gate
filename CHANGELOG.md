@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 修正
+
+- 移行前リポの Issue #11 へのリンクが、新しいリポの PR #11 へ飛んでいたのを、番号だけの表記に直した
+
 ### 追加
 
 - `scripts/verify.py --changed [BASE]`。途中の作業用に、差分に関係するテストだけを回して要約を出し、
@@ -56,7 +60,7 @@
   `agent.fact_output` は read-only CLI であり第四 built-in observe adapter ではない
 
 - 第三built-in adapter `test.disable`（[ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
-  [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）。
+  移行前リポの Issue #11）。
   Python + JS/TSのテスト無効化をread-only観測し、
   `unconditional_skip` / `focused_only` / `hollow_test`を独立軸のFindingとして出す。
   `skipif`はC1に含めず、`test.todo`はhollowではない。自由記述reasonは許可条件にせず

@@ -130,7 +130,7 @@ AIエージェント運用でこれが効くのは、エージェントが「直
   （`skipif`と`test.todo`は対象外。自由記述reasonは許可条件にせず既存waiver。
   C2は既存`strict`。C4・逆さまテストはスコープ外。契約は
   [ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
-  [Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）
+  移行前リポの Issue #11）
 - solution-knowledgeの`load_knowledge_document` / `compose_knowledge` / `resolve_problem`で、
   検証済み解法を決定論的に選択して返す（Python engine API。CLI subcommandではない。
   対象repoは変更しない。契約は[ADR-0002](docs/adr/ADR-0002-review-knowledge-propagation.md) /

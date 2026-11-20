@@ -47,7 +47,7 @@ branch protection必須化やv1.0宣言そのものは人間所有のため、�
 adapter化、receipt、waiver検証（Next Action 1–4）に加え、第二adapter
 `skills.provenance`（Next Action 5 / [ADR-0004](docs/adr/ADR-0004-skill-provenance-adapter.md)）と
 第三adapter `test.disable`（Next Action 6 / [ADR-0005](docs/adr/ADR-0005-test-disable-adapter.md) /
-[Issue #11](https://github.com/nexus-ai-2045/ai-ratchet-gate/issues/11)）も実装済み。
+移行前リポの Issue #11）も実装済み。
 脅威モデル回帰表と運用接続（CI / local / pre-commitレシピ）は実装済み。
 v1.0宣言とbranch protection必須化は人間停止線。
 
