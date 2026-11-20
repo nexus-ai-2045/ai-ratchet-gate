@@ -230,7 +230,7 @@ baselineの拡大、waiverの追加・延長・scope変更、ruleのenforce昇�
 ## 設計原則
 
 - **tracked ∧ ignored**: Git で追跡済みでありながら、`.gitignore` の対象にもなっているファイルを検出する
-- **fail-closed**: 列挙に失敗した状態で OK を返さない。baseline が無ければ初期化を要求して止まる
+- **fail-closed**: 列挙に失敗した状態で OK を返さない。既定の baseline が無いときは見逃し0件として判定し、名指しした baseline が無いときは止まる
 - **増分のみ**: 既存負債で今日の commit を止めない。締まる方向 (baseline が縮む) には自由
 - **可視な例外**: baseline は commit されるファイルなので、こっそり緩めることができない
 - **非 ASCII 安全**: `-z` 区切りで列挙し、日本語パスでも octal escape に化けない
