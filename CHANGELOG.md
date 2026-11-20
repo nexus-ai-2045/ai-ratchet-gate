@@ -18,6 +18,11 @@
   environment の secret は、その environment を指定した job の中の参照にだけ足す（全 environment の和にしない）
 - 本repo CI で上記3 adapter を baseline 0 件で enforce
 
+### CI
+
+- CI の test job を bash にそろえた。Windows の既定 pwsh では、複数行の enforce の途中の adapter が deny しても
+  最後の adapter が allow なら step が成功になっていた（検証用 PR #13 で実測）
+
 ## [0.3.0] - 2026-10-26
 
 ### 追加
