@@ -13,6 +13,11 @@ jobs:
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
+    # Windows の既定 pwsh は複数行 run の途中の失敗を拾わない（最後のコマンドだけで成否が決まる）。
+    # bash（-e 付き）にそろえ、どの adapter の deny でも step を赤にする
+    defaults:
+      run:
+        shell: bash
     env:
       PYTHONUTF8: "1"
     strategy:
