@@ -134,3 +134,11 @@ def test_required_aggregate_waits_for_ratchet() -> None:
     assert re.search(r"^  ratchet:\n    uses: \./\.github/workflows/ratchet-gate\.yml", text, re.M)
     assert re.search(r"needs: \[gate, ratchet\]", text)
     assert 'test "${{ needs.ratchet.result }}" = success' in text
+
+
+def test_readme_design_principle_matches_missing_baseline_rule() -> None:
+    """README の設計原則が ADR-0011 の「baseline なし＝見逃し0件」と食い違わない。"""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "baseline が無ければ初期化を要求して止まる" not in text
+    assert re.search(r"\*\*fail-closed\*\*:.*見逃し0件", text)
