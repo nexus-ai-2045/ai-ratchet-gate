@@ -1,0 +1,61 @@
+name: ratchet-gate
+
+# 各リポジトリから呼ぶ共通の ratchet（reusable workflow）。ADR-0011。
+# 呼び出し側に置くのは、既存の preflight.yml へ足すジョブ 1 つだけ。設定ファイル・フックはコピーしない。
+# 検査の正本はこのリポジトリ。呼び出し側は uses の @ と ratchet-ref に同じ 40桁 SHA を渡す。
+# baseline は既存の矛盾があるリポジトリだけが置く。無ければ見逃し0件として一番厳しく判定する。
+
+on:
+  workflow_call:
+    inputs:
+      ratchet-ref:
+        description: ai-ratchet-gate の 40桁の commit SHA。uses の @ と同じ SHA を渡す（枝名やタグ名は不可）
+        type: string
+        required: true
+      python-version:
+        type: string
+        default: "3.13"
+
+permissions:
+  contents: read
+
+jobs:
+  ratchet:
+    name: ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Require pinned ai-ratchet-gate SHA
+        env:
+          RATCHET_REF: ${{ inputs.ratchet-ref }}
+        run: '[[ "$RATCHET_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ratchet-ref には 40桁の commit SHA を渡してください" >&2; exit 1; }'
+      # 呼び出し側と ai-ratchet-gate を別の場所へ取り出し、検査対象の作業ツリーを汚さない
+      - name: Check out target repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: target
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Check out ai-ratchet-gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nexus-ai-2045/ai-ratchet-gate
+          ref: ${{ inputs.ratchet-ref }}
+          path: tool
+          persist-credentials: false
+      - name: Verify ai-ratchet-gate checkout matches the pinned SHA
+        env:
+          RATCHET_REF: ${{ inputs.ratchet-ref }}
+        run: 'test "$(git -C tool rev-parse HEAD)" = "$RATCHET_REF"'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install pinned ai-ratchet-gate
+        run: python -m pip install --disable-pip-version-check --no-deps ./tool
+      # 違反は 1、観測できないときは 2 で止まる（fail-closed）
+      - name: Run ai-ratchet-gate (tracked∧ignored)
+        env:
+          AI_RATCHET_GATE_SKIP: ""
+        run: python -m ai_ratchet_gate --repo target

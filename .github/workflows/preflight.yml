@@ -17,10 +17,16 @@ jobs:
     uses: nexus-ai-2045/repo-preflight/.github/workflows/preflight-gate.yml@fe2e90f91615a5e5ed3f9b2b497c99f5786e5847 # base-guard廃止後の固定版
     with:
       preflight-ref: fe2e90f91615a5e5ed3f9b2b497c99f5786e5847 # base-guard廃止後の固定版
+  # ratchet もこの集約ジョブで待つ。別 workflow に置くと必須チェックにならず、赤でもマージできる（ADR-0011）
+  ratchet:
+    uses: ./.github/workflows/ratchet-gate.yml
+    with:
+      ratchet-ref: ${{ github.sha }}
   # 必須にするのはこの集約ジョブ。if: で飛ばしても skipped は成功にならず赤になる
   all-green:
     if: always()
-    needs: [gate]
+    needs: [gate, ratchet]
     runs-on: ubuntu-latest
     steps:
       - run: test "${{ needs.gate.result }}" = success
+      - run: test "${{ needs.ratchet.result }}" = success

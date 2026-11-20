@@ -6,6 +6,12 @@
 
 ### 追加
 
+- 中央の reusable workflow `.github/workflows/ratchet-gate.yml`（[ADR-0011](docs/adr/ADR-0011-central-gate-no-dotfiles.md)）。
+  導入先は既存の `preflight.yml` からジョブ 1 つで呼び、`all-green` で待つ。導入先へファイルをコピーしない。
+  版は 40 桁 SHA で固定し、導入先とこのリポを別の場所へ取り出して検査する
+- 既定の baseline が無いときは見逃し 0 件として判定する（今までは exit 2）。`--baseline` で名指しした
+  ファイルが無いときは今までどおり exit 2
+- 本リポの `all-green` が `ratchet` の結果も待つ
 - `scripts/verify.py --changed [BASE]`。途中の作業用に、差分に関係するテストだけを回して要約を出し、
   全文は `.git/verify/` のログへ落とす。決まらない変更は全部のテストに戻す。既定（引数なし）とCIは今までどおり全部
 - `ci.pin_tagged` / `ci.release_asset_live` / `ci.secret_declared` adapter（[ADR-0009](docs/adr/ADR-0009-ci-facts-adapters.md)）。

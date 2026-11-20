@@ -43,14 +43,22 @@ python scripts/verify.py
 
 ### 導入の最小手順（Git adapter）
 
-```console
-ai-ratchet-gate --repo . --update-baseline
-ai-ratchet-gate --repo .
+導入先には設定ファイルもフックもコピーしません（[ADR-0011](docs/adr/ADR-0011-central-gate-no-dotfiles.md)）。
+既存の `.github/workflows/preflight.yml` に次のジョブを足し、必須チェック `all-green` の `needs` に `ratchet` を入れます。
+
+```yaml
+  ratchet:
+    uses: nexus-ai-2045/ai-ratchet-gate/.github/workflows/ratchet-gate.yml@<40桁SHA>
+    with:
+      ratchet-ref: <同じ40桁SHA>
 ```
 
-1. 初回に `ai-ratchet-gate --repo . --update-baseline` で現在の矛盾を baseline（既定: `./.ai-ratchet-gate/baseline.txt`）として記録する
-2. 以後の commit 前に `ai-ratchet-gate --repo .` で検査する
+1. baseline は置きません。無いときは見逃し 0 件として判定し、`tracked ∧ ignored` が 1 件でもあれば止まります
+2. 既存の矛盾を見逃す必要があるリポだけ、`ai-ratchet-gate --repo . --update-baseline` で
+   `./.ai-ratchet-gate/baseline.txt` を作り、差分を人がレビューします
 3. deny 時はエラー文の修復手順に従う（生成物なら `git rm --cached <file>` / 実装なら `.gitignore` に `!<path>` / 意図的例外なら `ai-ratchet-gate --repo . --update-baseline`）
+
+手元で先に確かめるときは `ai-ratchet-gate --repo .` を実行します。
 
 緊急回避は `AI_RATCHET_GATE_SKIP=1`（痕跡が出力に残ります）。AI に導入を依頼する場合は、このリポジトリの URL を渡し「このラチェットゲートを私のリポジトリへ導入して」と頼んでください。生成差分は必ず人間がレビューしてください。
 
@@ -222,7 +230,7 @@ baselineの拡大、waiverの追加・延長・scope変更、ruleのenforce昇�
 ## 設計原則
 
 - **tracked ∧ ignored**: Git で追跡済みでありながら、`.gitignore` の対象にもなっているファイルを検出する
-- **fail-closed**: 列挙に失敗した状態で OK を返さない。baseline が無ければ初期化を要求して止まる
+- **fail-closed**: 列挙に失敗した状態で OK を返さない。既定の baseline が無いときは見逃し0件として判定し、名指しした baseline が無いときは止まる
 - **増分のみ**: 既存負債で今日の commit を止めない。締まる方向 (baseline が縮む) には自由
 - **可視な例外**: baseline は commit されるファイルなので、こっそり緩めることができない
 - **非 ASCII 安全**: `-z` 区切りで列挙し、日本語パスでも octal escape に化けない

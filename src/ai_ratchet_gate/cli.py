@@ -435,14 +435,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if not baseline_path.is_file():
+    if baseline_path.is_file():
+        baseline = parse_baseline(baseline_path)
+    elif args.baseline is None and not baseline_path.exists():
+        # 既定の baseline が無い＝見逃し0件として一番厳しく判定する（ADR-0011）。
+        # 対象リポへファイルを置かずに導入でき、既存の矛盾があれば全部止まる。
+        print("==> ai-ratchet-gate: baseline なし（見逃し0件として判定します）")
+        baseline = set()
+    else:
+        # --baseline で名指ししたファイルが無いのは打ち間違いの恐れがあるので止める
         print(
             f"ERROR [ai_ratchet_gate]: baseline がありません: {baseline_path}\n"
             f"{_update_baseline_recovery_hint()}"
         )
         return 2
 
-    new, resolved = diff_against_baseline(current, parse_baseline(baseline_path))
+    new, resolved = diff_against_baseline(current, baseline)
 
     if resolved:
         print(
